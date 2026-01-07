@@ -1,0 +1,29 @@
+[
+  {
+    "id": "hindi-1",
+    "title": "Kesariya",
+    "artist": "Arijit Singh",
+    "language": "Hindi",
+    "image": "/assets/kesariya.jpg",
+    "audio": "/audio/kesariya.mp3",
+    "lyrics": []
+  },
+  {
+    "id": "punjabi-1",
+    "title": "Brown Munde",
+    "artist": "AP Dhillon",
+    "language": "Punjabi",
+    "image": "/assets/brownmunde.jpg",
+    "audio": "/audio/brownmunde.mp3",
+    "lyrics": []
+  },
+  {
+    "id": "english-1",
+    "title": "Shape of You",
+    "artist": "Ed Sheeran",
+    "language": "English",
+    "image": "/assets/shapeofyou.jpg",
+    "audio": "/audio/shapeofyou.mp3",
+    "lyrics": []
+  }
+]
