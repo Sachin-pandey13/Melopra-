@@ -1,0 +1,44 @@
+.immersive-panel {
+  position: relative;
+  height: 100%;
+  /* ❌ REMOVE background + blur — handled in JSX */
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1rem;
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  z-index: 40;
+}
+
+.immersive-content {
+  padding-top: 60px;
+}
+
+.resizer {
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  position: absolute;
+  left: 0;
+  top: 0;
+  background: rgba(255, 255, 255, 0.06);
+  transition: background 0.2s ease;
+}
+
+.resizer:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.border-glow {
+  animation: glow-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px var(--glow-color, rgba(255,255,255,0.2));
+  }
+  50% {
+    box-shadow: 0 0 40px var(--glow-color, rgba(255,255,255,0.4));
+  }
+}

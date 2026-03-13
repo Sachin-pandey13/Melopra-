@@ -1,0 +1,30 @@
+node_modules
+# Python virtual environments
+venv/
+**/venv/
+ml_worker/venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+
+# Env
+.env
+.env.*
+
+# Build
+dist/
+.vite/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

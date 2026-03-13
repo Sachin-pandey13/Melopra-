@@ -1,0 +1,10 @@
+.play-pause-button {
+  @apply bg-purple-600 text-white p-4 rounded-full shadow-lg;
+  border: none;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.play-pause-button:hover {
+  @apply bg-purple-500;
+}
