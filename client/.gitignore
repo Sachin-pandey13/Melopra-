@@ -1,45 +1,29 @@
 # -----------------------------
-# Python virtual environments
-# -----------------------------
-venv/
-**/venv/
-ml_worker/venv/
-
-# Python cache
-__pycache__/
-**/__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Python compiled
-*.so
-*.egg
-*.egg-info/
-
-# -----------------------------
-# Node
+# Node dependencies
 # -----------------------------
 node_modules/
+
+# -----------------------------
+# Build outputs
+# -----------------------------
+dist/
+build/
+.vite/
 
 # -----------------------------
 # Environment variables
 # -----------------------------
 .env
 .env.*
+!.env.example
 
 # -----------------------------
-# Build files
+# Logs
 # -----------------------------
-dist/
-.vite/
-build/
-
-# -----------------------------
-# Uploads / generated data
-# -----------------------------
-uploads/
-*.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # -----------------------------
 # OS junk
@@ -48,13 +32,9 @@ uploads/
 Thumbs.db
 
 # -----------------------------
-# IDE
+# IDE / Editor
 # -----------------------------
 .vscode/
 .idea/
-
-# -----------------------------
-# ML worker junk
-# -----------------------------
-ml_worker/venv/
-ml_worker/__pycache__/
+*.swp
+*.swo
