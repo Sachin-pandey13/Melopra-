@@ -99,11 +99,17 @@ app.post("/api/log_event", async (req, res) => {
  🔐 FIXED: SECURITY MIDDLEWARE NOW AFTER /api/flowcast
 ----------------------------------------------------------- */
 app.use((req, res, next) => {
-  const allowed = ["localhost", "127.0.0.1", "::1"];
+  const allowed = [
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "melopra-backend.onrender.com"
+  ];
 
   if (
     allowed.includes(req.hostname) ||
-    req.hostname.includes("vercel")
+    req.hostname.includes("vercel") ||
+    req.hostname.includes("onrender")
   ) {
     return next();
   }
