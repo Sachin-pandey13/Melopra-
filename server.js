@@ -98,25 +98,6 @@ app.post("/api/log_event", async (req, res) => {
 /* -----------------------------------------------------------
  🔐 FIXED: SECURITY MIDDLEWARE NOW AFTER /api/flowcast
 ----------------------------------------------------------- */
-app.use((req, res, next) => {
-  const allowed = [
-    "localhost",
-    "127.0.0.1",
-    "::1",
-    "melopra-backend.onrender.com"
-  ];
-
-  if (
-    allowed.includes(req.hostname) ||
-    req.hostname.includes("vercel") ||
-    req.hostname.includes("onrender")
-  ) {
-    return next();
-  }
-
-  console.log(`⚠️ blocked: ${req.hostname}`);
-  return res.status(403).json({ error: "Forbidden" });
-});
 
 /* -----------------------------------------------------------
  🔊 Helper: ffmpeg + fpcalc for acoustic ID
