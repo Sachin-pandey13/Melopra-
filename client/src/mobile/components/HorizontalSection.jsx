@@ -77,7 +77,7 @@ export default function HorizontalSection({
               }}
               onSwipeRight={addToQueue}
               onSwipeLeft={toggleLike}
-              onSwipeUp={addToPlaylist}
+              onLongPress={addToPlaylist}
             >
               <div style={{ 
                 width: type === "card" ? 220 : 130, 
@@ -99,6 +99,8 @@ export default function HorizontalSection({
                   <img
                     src={item.image}
                     alt={item.title}
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
                     style={{
                       width: "100%",
                       height: "100%",

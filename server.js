@@ -47,6 +47,13 @@ app.use("/api", recommendationsRoute);
 app.use("/api/flowcast", flowcastRoutes);
 
 /* -----------------------------------------------------------
+ 🌐 Root route — production health check
+----------------------------------------------------------- */
+app.get("/", (req, res) => {
+  res.send("Melopra backend running 🚀");
+});
+
+/* -----------------------------------------------------------
  🧠 DEBUG: Basic server health check
 ----------------------------------------------------------- */
 app.get("/ping", (req, res) => {
@@ -375,5 +382,5 @@ app.get("/proxy", async (req, res) => {
  🚀 Start the server
 ----------------------------------------------------------- */
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

@@ -20,8 +20,9 @@ export default function DetectMusic() {
       setStatus("Uploading...");
       const fd = new FormData();
       fd.append("demo", blob, "demo.webm");
+      const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
       try {
-        const res = await fetch("http://localhost:4000/api/detect", { method: "POST", body: fd });
+        const res = await fetch(`${BASE_URL}/api/detect`, { method: "POST", body: fd });
         const json = await res.json();
         if (json.matches && json.matches.length) {
           setStatus(`Found: ${json.matches[0].title} — ${json.matches[0].artist}`);

@@ -5,7 +5,7 @@ export async function getRecommendations(userId, seedSong = null) {
 
   try {
     const BASE_URL =
-      import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+      import.meta.env.VITE_API_URL || "http://localhost:4000";
 
     const seedTitle = seedSong?.title || "";
     const seedArtist = seedSong?.artist || "";

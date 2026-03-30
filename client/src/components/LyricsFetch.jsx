@@ -9,8 +9,9 @@ export default function LyricsFetch() {
   async function fetchLyrics() {
     if (!q.trim()) return setStatus("Enter artist + title or song title");
     setStatus("Searching...");
+    const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
     try {
-      const res = await fetch(`http://localhost:4000/api/lyrics?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`${BASE_URL}/api/lyrics?q=${encodeURIComponent(q)}`);
       const json = await res.json();
       if (json.found) {
         setLyrics(json);

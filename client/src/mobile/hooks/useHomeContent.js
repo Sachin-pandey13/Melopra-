@@ -1,10 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
 import { searchYouTube } from "../utils/searchYouTube";
+import { playItem, replaceQueue } from "../state/useNowPlaying";
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
-// Browser ORB policy blocks many proxies; using direct URL or letting HorizontalSection handle fallbacks
-const proxy = (url) => url;
+// Browser ORB policy is strict on mobile; we must proxy dzcdn images through weserv
+const proxy = (url) => {
+  if (!url) return "";
+  if (url.includes("wsrv.nl") || !url.includes("dzcdn.net")) return url;
+  const cleanUrl = url.replace(/^https?:\/\//, "");
+  return `https://images.weserv.nl/?url=${cleanUrl}&w=400&h=400&fit=cover`;
+};
 
 /**
  * Hook to manage complex home screen data needs:
@@ -40,15 +46,10 @@ export default function useHomeContent({ library, actions }) {
       type: "artist-mix",
       artist: artist.name,
       // used for actions
-      onPlay: () => {
-         // This would trigger an auto-radio/playlist for the artist
-         actions.play({
-            id: artist.channelId || artist.id,
-            title: `${artist.name} Radio`,
-            artist: artist.name,
-            image: artist.image,
-            category: "YouTube" // or "Radio"
-         });
+      onPlay: async () => {
+         // Fetches the artist's top tracks gracefully instead of passing arbitrary artist IDs to the player
+         const songs = await searchYouTube(`${artist.name} official hits`, 10);
+         if (songs?.length) actions.play(songs[0]);
       }
     }));
   }, [followedArtists, actions]);
@@ -153,34 +154,68 @@ export default function useHomeContent({ library, actions }) {
     smartMixes: [
        { 
          id: "sm-1", title: "Punjabi Vibes", subtitle: "Deep Sidhu, Shubh...", 
-         image: "https://images.unsplash.com/photo-1514525253344-a812df93602c?auto=format&fit=crop&w=400&q=80", 
+         image: proxy("https://images.unsplash.com/photo-1514525253344-a812df93602c?auto=format&fit=crop&w=400&q=80"), 
          onPlay: async () => {
-           const songs = await searchYouTube("latest punjabi hits 2024", 10);
-           if (songs?.length) actions.play(songs[0]);
+           const songs = await searchYouTube("latest punjabi hits 2024 official", 12);
+           if (songs?.length) {
+              playItem(songs[0], { keepQueue: false });
+              replaceQueue(songs.slice(1), "ml");
+           }
          }
        },
        { 
          id: "sm-2", title: "Hindi Romantic", subtitle: "Arijit, Darshan Raval...", 
-         image: "https://images.unsplash.com/photo-1453090927415-5f353604e5a1?auto=format&fit=crop&w=400&q=80", 
+         image: proxy("https://images.unsplash.com/photo-1453090927415-5f353604e5a1?auto=format&fit=crop&w=400&q=80"), 
          onPlay: async () => {
-           const songs = await searchYouTube("hindi romantic hits arijit singh", 10);
-           if (songs?.length) actions.play(songs[0]);
+           const songs = await searchYouTube("hindi romantic hits arijit singh", 12);
+           if (songs?.length) {
+              playItem(songs[0], { keepQueue: false });
+              replaceQueue(songs.slice(1), "ml");
+           }
          }
        },
        { 
          id: "sm-3", title: "Lo-fi Relax", subtitle: "Quiet beats for focus", 
-         image: "https://images.unsplash.com/photo-1494232410401-ad00d5433cfa?auto=format&fit=crop&w=400&q=80", 
+         image: proxy("https://images.unsplash.com/photo-1494232410401-ad00d5433cfa?auto=format&fit=crop&w=400&q=80"), 
          onPlay: async () => {
-           const songs = await searchYouTube("lofi hip hop chill beats relax", 10);
-           if (songs?.length) actions.play(songs[0]);
+           const songs = await searchYouTube("lofi hip hop chill beats relax", 12);
+           if (songs?.length) {
+              playItem(songs[0], { keepQueue: false });
+              replaceQueue(songs.slice(1), "ml");
+           }
          }
        },
        { 
-         id: "sm-4", title: "Energize Workout", subtitle: "Kickstart your heart", 
-         image: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=400&q=80", 
+         id: "sm-4", title: "English Pop", subtitle: "Top hits across the globe", 
+         image: proxy("https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80"), 
          onPlay: async () => {
-           const songs = await searchYouTube("high energy workout music 2024", 10);
-           if (songs?.length) actions.play(songs[0]);
+           const songs = await searchYouTube("top english pop hits 2024", 12);
+           if (songs?.length) {
+              playItem(songs[0], { keepQueue: false });
+              replaceQueue(songs.slice(1), "ml");
+           }
+         }
+       },
+       { 
+         id: "sm-5", title: "Rap & Hip-Hop", subtitle: "Hard-hitting bars", 
+         image: proxy("https://images.unsplash.com/photo-1571343729961-d6a992be7a84?auto=format&fit=crop&w=400&q=80"), 
+         onPlay: async () => {
+           const songs = await searchYouTube("desi rap hip hop hits official", 12);
+           if (songs?.length) {
+              playItem(songs[0], { keepQueue: false });
+              replaceQueue(songs.slice(1), "ml");
+           }
+         }
+       },
+       { 
+         id: "sm-6", title: "Bhajan & Devotional", subtitle: "Find your inner peace", 
+         image: proxy("https://images.unsplash.com/photo-1582560469792-540c4912946c?auto=format&fit=crop&w=400&q=80"), 
+         onPlay: async () => {
+           const songs = await searchYouTube("top bhajan devotional hits", 12);
+           if (songs?.length) {
+              playItem(songs[0], { keepQueue: false });
+              replaceQueue(songs.slice(1), "ml");
+           }
          }
        }
     ]

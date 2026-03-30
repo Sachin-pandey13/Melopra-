@@ -21,7 +21,7 @@ export default function VerticalList({
             onPress={play}
             onSwipeRight={addToQueue}
             onSwipeLeft={toggleLike}
-            onSwipeUp={addToPlaylist}
+            onLongPress={addToPlaylist}
           >
             <div
               style={{

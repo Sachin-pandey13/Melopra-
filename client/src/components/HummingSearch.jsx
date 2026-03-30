@@ -20,8 +20,9 @@ export default function HummingSearch() {
       setStatus("Uploading humming clip...");
       const fd = new FormData();
       fd.append("demo", blob, "hum.webm");
+      const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
       try {
-        const res = await fetch("http://localhost:4000/api/humsearch", { method: "POST", body: fd });
+        const res = await fetch(`${BASE_URL}/api/humsearch`, { method: "POST", body: fd });
         const json = await res.json();
         if (res.status === 501) {
           setStatus("Humming search not implemented on server. See README for setup.");

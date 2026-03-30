@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ArtistPlaylistView from "./ArtistPlaylistView";
 
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const DECAY_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
 // In-memory session cache
@@ -95,7 +96,7 @@ const [selectedArtist, setSelectedArtist] = useState(null);
           continue;
         }
 
-        const res = await fetch(`http://localhost:4000/api/flowcast?channelId=${channelId}&sort=views`);
+        const res = await fetch(`${BASE_URL}/api/flowcast?channelId=${channelId}&sort=views`);
         if (!res.ok) continue;
 
         const data = await res.json();

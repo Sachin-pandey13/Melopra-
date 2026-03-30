@@ -10,6 +10,7 @@ import {
   addTrackToPlaylist,
   removeTrackFromPlaylist,
   createPlaylist,
+  deletePlaylist,
 } from "../utils/FirestorePlaylists";
 import {
   fetchFollowedArtists,
@@ -176,6 +177,19 @@ export default function useLibraryController({ currentUser }) {
     return newPl;
   };
 
+  const removePlaylist = async (playlistId) => {
+    if (!currentUser) return;
+    try {
+      await deletePlaylist(currentUser.uid, playlistId);
+      setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+      if (activePlaylist && activePlaylist.id === playlistId) {
+        closePlaylist();
+      }
+    } catch (err) {
+      console.error("Failed to delete playlist:", err);
+    }
+  };
+
   /* ================= ADD TO PLAYLIST FLOW ================= */
 
   const openAddToPlaylist = (song) => {
@@ -256,11 +270,15 @@ export default function useLibraryController({ currentUser }) {
     closeCreatePlaylist,
     setNewPlaylistName,
     createNewPlaylist,
+    removePlaylist,
 
     openAddToPlaylist,
     closeAddToPlaylist,
 
     openArtist,
     closeArtist,
+
+    // expose setter so screens can optimistically update
+    setPlaylists,
   };
 }

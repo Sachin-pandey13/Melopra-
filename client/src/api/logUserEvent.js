@@ -9,8 +9,9 @@ export async function logUserEvent({
 }) {
   if (!songId || !event) return;
 
+  const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
   try {
-    await fetch("http://localhost:4000/api/log_event", {
+    await fetch(`${BASE_URL}/api/log_event`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

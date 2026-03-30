@@ -3,7 +3,9 @@ import MobileTopBar from "../components/MobileTopBar";
 import { useAuth } from "../../contexts/AuthContext";
 import useLibraryController from "../../hooks/useLibraryController";
 import { playItem } from "../state/useNowPlaying";
+import { createPlaylist } from "../../utils/FirestorePlaylists";
 import ArtistSearchPage from "./ArtistSearchPage";
+import PlaylistCollage from "../components/PlaylistCollage";
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
@@ -103,7 +105,7 @@ function HScrollRow({ title, children, emptyText, rightAction }) {
 }
 
 /* ========== LIBRARY SCREEN ========== */
-export default function LibraryScreen({ actions, library: externalLibrary }) {
+export default function LibraryScreen({ actions, library: externalLibrary, onLoginRequest }) {
   const { currentUser } = useAuth();
   // Use the external library if provided, otherwise create our own
   const internalLibrary = useLibraryController({ currentUser });
@@ -114,6 +116,7 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPlName, setNewPlName] = useState("");
   const [showArtistSearch, setShowArtistSearch] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   /* ---- Fetch albums based on followed artists (60-40 random split) ---- */
   useEffect(() => {
@@ -152,11 +155,23 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
 
   /* ---- Create playlist handler ---- */
   const handleCreatePlaylist = async () => {
-    if (!newPlName.trim()) return;
-    library.setNewPlaylistName(newPlName.trim());
-    await library.createNewPlaylist();
-    setShowCreateModal(false);
-    setNewPlName("");
+    if (!currentUser) { console.warn("Not logged in"); return; }
+    if (!newPlName.trim() || creating) return;
+    setCreating(true);
+    try {
+      // ✅ FIX: call Firestore directly with the local value — avoids async state race
+      const newId = await createPlaylist(currentUser.uid, newPlName.trim());
+      const newPl = { id: newId, name: newPlName.trim(), createdAt: new Date() };
+      // Optimistically update the list
+      library.setPlaylists?.((prev) => [...(prev || []), newPl]);
+      setShowCreateModal(false);
+      setNewPlName("");
+    } catch (err) {
+      console.error("Create playlist failed:", err);
+      alert("Failed to create playlist. Please try again.");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const play = actions?.play || ((item) => playItem(item));
@@ -187,12 +202,13 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
       <HScrollRow title="🎵 Playlists" emptyText="Create a playlist to get started">
         {/* Create Playlist Card */}
         <div
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => currentUser ? setShowCreateModal(true) : null}
           style={{
             width: 120,
             flexShrink: 0,
             scrollSnapAlign: "start",
-            cursor: "pointer",
+            cursor: currentUser ? "pointer" : "default",
+            opacity: currentUser ? 1 : 0.6,
           }}
           className="active:scale-95 transition-transform"
         >
@@ -221,6 +237,7 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
           <PlaylistCard
             key={pl.id}
             playlist={pl}
+            currentUser={currentUser}
             onClick={() => library.openPlaylist(pl)}
           />
         ))}
@@ -302,6 +319,9 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
             await library.addToPlaylist(song, targetPlaylistId);
             await library.removeFromPlaylist(songId, library.activePlaylist.id);
           }}
+          onDelete={() => {
+            library.removePlaylist(library.activePlaylist.id);
+          }}
         />
       )}
 
@@ -332,11 +352,18 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
             }}
           >
             <h3 style={{ marginBottom: 12, fontWeight: 600 }}>Create Playlist</h3>
+            {!currentUser && (
+              <p style={{ fontSize: 12, color: "#f87171", marginBottom: 12 }}>
+                ⚠️ You must be logged in to create playlists.
+              </p>
+            )}
             <input
               value={newPlName}
               onChange={(e) => setNewPlName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreatePlaylist()}
               placeholder="Playlist name..."
               autoFocus
+              disabled={!currentUser}
               style={{
                 width: "100%",
                 padding: "10px 14px",
@@ -347,6 +374,7 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
                 outline: "none",
                 fontSize: 14,
                 marginBottom: 16,
+                opacity: currentUser ? 1 : 0.5,
               }}
             />
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -364,22 +392,25 @@ export default function LibraryScreen({ actions, library: externalLibrary }) {
                 Cancel
               </button>
               <button
-                disabled={!newPlName.trim()}
+                disabled={!newPlName.trim() || creating || !currentUser}
                 onClick={handleCreatePlaylist}
+                onKeyDown={(e) => e.key === "Enter" && handleCreatePlaylist()}
                 style={{
                   padding: "8px 16px",
                   borderRadius: 8,
                   border: "none",
-                  background: newPlName.trim()
-                    ? "linear-gradient(135deg, #1DB954, #1ed760)"
-                    : "rgba(255,255,255,0.05)",
+                  background:
+                    newPlName.trim() && currentUser
+                      ? "linear-gradient(135deg, #1DB954, #1ed760)"
+                      : "rgba(255,255,255,0.05)",
                   color: "white",
                   fontWeight: 600,
-                  cursor: newPlName.trim() ? "pointer" : "default",
-                  opacity: newPlName.trim() ? 1 : 0.4,
+                  cursor: newPlName.trim() && currentUser ? "pointer" : "default",
+                  opacity: newPlName.trim() && currentUser ? 1 : 0.4,
+                  minWidth: 70,
                 }}
               >
-                Create
+                {creating ? "Creating..." : "Create"}
               </button>
             </div>
           </div>
@@ -448,7 +479,7 @@ function SongCard({ item, onPlay }) {
 }
 
 /* ========== PLAYLIST CARD ========== */
-function PlaylistCard({ playlist, onClick }) {
+function PlaylistCard({ playlist, currentUser, onClick }) {
   return (
     <div
       onClick={onClick}
@@ -470,9 +501,10 @@ function PlaylistCard({ playlist, onClick }) {
           alignItems: "center",
           justifyContent: "center",
           fontSize: 28,
+          overflow: "hidden", // Important for the grid corners
         }}
       >
-        🎵
+        <PlaylistCollage playlist={playlist} userId={currentUser?.uid} />
       </div>
       <p
         style={{
@@ -567,7 +599,7 @@ function ArtistCard({ artist, onToggleFollow }) {
 }
 
 /* ========== PLAYLIST DETAIL OVERLAY (with Move-to feature) ========== */
-function PlaylistDetailOverlay({ playlist, tracks, allPlaylists, onClose, onPlay, onRemove, onMoveTo }) {
+function PlaylistDetailOverlay({ playlist, tracks, allPlaylists, onClose, onPlay, onRemove, onMoveTo, onDelete }) {
   const [moveTrack, setMoveTrack] = useState(null); // { id, ...song } being moved
 
   const otherPlaylists = allPlaylists.filter((p) => p.id !== playlist.id);
@@ -620,7 +652,7 @@ function PlaylistDetailOverlay({ playlist, tracks, allPlaylists, onClose, onPlay
       <div style={{ padding: "8px 0" }}>
         {tracks.length === 0 ? (
           <p style={{ padding: 16, opacity: 0.5, fontSize: 13 }}>
-            This playlist is empty. Swipe up on a song to add it.
+            This playlist is empty. Long-press any song to add it.
           </p>
         ) : (
           tracks.map((track) => (
@@ -708,6 +740,35 @@ function PlaylistDetailOverlay({ playlist, tracks, allPlaylists, onClose, onPlay
             </div>
           ))
         )}
+      </div>
+
+      {/* Delete Playlist Button */}
+      <div style={{ padding: "16px", marginTop: "16px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <button
+          onClick={() => {
+            if (window.confirm(`Are you sure you want to delete "${playlist.name}"?`)) {
+              onDelete();
+            }
+          }}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 10,
+            background: "rgba(239, 68, 68, 0.15)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            color: "#ef4444",
+            fontSize: 15,
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 8,
+          }}
+          className="active:scale-95 transition-transform hover:bg-red-500/20"
+        >
+          🗑️ Delete Playlist
+        </button>
       </div>
 
       {/* ===== Move to another playlist sheet ===== */}
