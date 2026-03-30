@@ -3,6 +3,36 @@ import {
   togglePlay,
   openPlayer,
 } from "../state/useNowPlaying";
+import { usePlayerTime } from "../state/usePlayerTime";
+
+function MiniProgressBar() {
+  const { currentTime, duration } = usePlayerTime();
+  const percentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+  
+  return (
+    <div 
+      style={{
+        position: "absolute",
+        bottom: 0,
+        left: 12,
+        right: 12,
+        height: 2,
+        backgroundColor: "rgba(255,255,255,0.1)",
+        borderRadius: 2,
+        overflow: "hidden"
+      }}
+    >
+      <div 
+        style={{
+          height: "100%",
+          backgroundColor: "#fff",
+          width: `${percentage}%`,
+          transition: "width 0.5s linear"
+        }}
+      />
+    </div>
+  );
+}
 
 export default function MiniPlayerCollapsed() {
   const { current, isPlaying, isSmartLoading } = useNowPlaying();
@@ -112,27 +142,7 @@ export default function MiniPlayerCollapsed() {
       </button>
 
       {/* Mini Progress Bar Overlay */}
-      <div 
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 12,
-          right: 12,
-          height: 2,
-          backgroundColor: "rgba(255,255,255,0.1)",
-          borderRadius: 2,
-          overflow: "hidden"
-        }}
-      >
-        <div 
-          style={{
-            height: "100%",
-            backgroundColor: "#fff",
-            width: "30%", // Placeholder until progress state exists
-            transition: "width 0.1s linear"
-          }}
-        />
-      </div>
+      <MiniProgressBar />
 
     </div>
   );

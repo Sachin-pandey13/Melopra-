@@ -11,12 +11,74 @@ import {
   shuffleQueue,
   toggleRepeat,          
 } from "../state/useNowPlaying";
+import { usePlayerTime, requestSeek } from "../state/usePlayerTime";
+
+/* ---------------- HELPERS ---------------- */
+function formatTime(seconds) {
+  if (isNaN(seconds) || seconds < 0) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
 
 /* ---------------- CONSTANTS ---------------- */
 
 const SWIPE_DISTANCE = 70;
 const SWIPE_VELOCITY = 0.5;
 const MAX_DRAG = 100;
+
+/* ---------------- PROGRESS BAR COMPONENT ---------------- */
+
+function ProgressBar() {
+  const { currentTime, duration } = usePlayerTime();
+
+  const handleSeek = (e) => {
+    const val = parseFloat(e.target.value);
+    requestSeek(val);
+  };
+
+  const percentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div style={{ width: "95%", marginTop: 10, marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 11, opacity: 0.6, width: 35, textAlign: "right" }}>
+          {formatTime(currentTime)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={duration || 100}
+          value={currentTime || 0}
+          onChange={handleSeek}
+          style={{
+            flex: 1,
+            WebkitAppearance: "none",
+            height: 4,
+            background: `linear-gradient(to right, #fff ${percentage}%, rgba(255,255,255,0.2) ${percentage}%)`,
+            borderRadius: 2,
+            outline: "none",
+          }}
+          className="custom-range"
+        />
+        <span style={{ fontSize: 11, opacity: 0.6, width: 35, textAlign: "left" }}>
+          {formatTime(duration)}
+        </span>
+      </div>
+      <style>{`
+        .custom-range::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: #fff;
+          cursor: pointer;
+          box-shadow: 0 0 4px rgba(0,0,0,0.4);
+        }
+      `}</style>
+    </div>
+  );
+}
 
 /* ---------------- COMPONENT ---------------- */
 
@@ -168,11 +230,7 @@ export default function ExpandedPlayer() {
         </div>
 
         {/* PROGRESS */}
-        <div style={{ width: "80%" }}>
-          <div style={progressTrack}>
-            <div style={progressFill} />
-          </div>
-        </div>
+        <ProgressBar />
 
 {/* ACTION ROW */}
 <div style={actionRow}>
