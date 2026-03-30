@@ -21,6 +21,7 @@ export default function InteractiveItem({
   const hasEndedRef = useRef(false);
   const longPressTimer = useRef(null);
   const longPressTriggered = useRef(false);
+  const isScrollingRef = useRef(false);
 
   const clearLongPress = () => {
     if (longPressTimer.current) {
@@ -36,6 +37,7 @@ export default function InteractiveItem({
 
     hasEndedRef.current = false;
     longPressTriggered.current = false;
+    isScrollingRef.current = false;
     startRef.current = { x: e.clientX, y: e.clientY };
     deltaRef.current = { dx: 0, dy: 0 };
 
@@ -43,6 +45,7 @@ export default function InteractiveItem({
 
     // Start long-press timer
     longPressTimer.current = setTimeout(() => {
+      if (isScrollingRef.current) return;
       longPressTriggered.current = true;
       setLongPressActive(true);
       // Haptic feedback on supported devices
@@ -55,12 +58,26 @@ export default function InteractiveItem({
 
   /* ---------- POINTER MOVE ---------- */
   const onPointerMove = (e) => {
-    if (!pressed || hasEndedRef.current) return;
+    if (!pressed || hasEndedRef.current || isScrollingRef.current) return;
 
     const dxVal = e.clientX - startRef.current.x;
     const dyVal = e.clientY - startRef.current.y;
 
     deltaRef.current = { dx: dxVal, dy: dyVal };
+
+    // Detect if user is scrolling vertically
+    if (Math.abs(dyVal) > TAP_THRESHOLD && Math.abs(dyVal) > Math.abs(dxVal)) {
+      isScrollingRef.current = true;
+      hasEndedRef.current = true;
+      setPressed(false);
+      setDx(0);
+      clearLongPress();
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+      return;
+    }
+
     setDx(dxVal);
 
     // Cancel long press if user starts dragging
@@ -120,7 +137,7 @@ export default function InteractiveItem({
           ? "0 8px 20px rgba(0,0,0,0.4)"
           : "none",
         borderRadius: 12,
-        touchAction: "none",
+        touchAction: "pan-y",
         WebkitTapHighlightColor: "transparent",
         cursor: "pointer",
       }}
