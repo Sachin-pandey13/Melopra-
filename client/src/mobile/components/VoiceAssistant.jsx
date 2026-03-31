@@ -232,17 +232,36 @@ export default function VoiceAssistant() {
     processingRef.current = false;
   };
 
-  // ── Audio Detection (10-second recording) ─────────────────────────────────
+  // ── Audio Detection ────────────────────────────────────────────────────────
   const handleAudioDetection = async () => {
-    showFeedback("🎵 Listening... (hold phone near speaker)", 0);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    showFeedback("🎵 Hold phone near music (10s)...", 0);
 
-      // Prefer audio/webm but fall back gracefully
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/ogg";
-      const rec = new MediaRecorder(stream, { mimeType });
+    // ⏳ Small delay so SpeechRecognition fully releases the mic before we grab it
+    await new Promise((r) => setTimeout(r, 600));
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          // ✅ CRITICAL: Disable all voice-call processing — these destroy music quality
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
+          sampleRate: 44100,
+        },
+      });
+
+      // Pick the best supported format
+      const mimeType =
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" :
+        MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" :
+        MediaRecorder.isTypeSupported("audio/ogg;codecs=opus") ? "audio/ogg;codecs=opus" :
+        "audio/ogg";
+
+      const rec = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 128000,  // higher quality capture
+      });
       const chunks = [];
 
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
