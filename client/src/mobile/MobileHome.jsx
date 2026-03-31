@@ -1,8 +1,9 @@
 import { useState } from "react";
 
 import BottomNav from "./BottomNav";
-import YouTubeAudioPlayer from "./components/YouTubeAudioPlayer";
+import CustomAudioPlayer from "./components/CustomAudioPlayer";
 import MiniPlayer from "./components/MiniPlayer";
+import VoiceAssistant from "./components/VoiceAssistant";
 import PlayerBackdrop from "./components/PlayerBackdrop";
 import GlobalBackdrop from "./components/GlobalBackdrop";
 
@@ -62,8 +63,11 @@ export default function MobileHome({ allItems = [], actions, library }) {
         {renderScreen()}
       </div>
 
+      {/* MELO VOICE ASSISTANT */}
+      {!isExpanded && <VoiceAssistant />}
+
       {/* AUDIO ENGINE */}
-      <YouTubeAudioPlayer />
+      <CustomAudioPlayer />
 
       {/* MINI + EXPANDED PLAYER */}
       <MiniPlayer />

@@ -8,17 +8,18 @@ const cors = require("cors");
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const multer = require("multer");
-const { spawnSync } = require("child_process");
+
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const cheerio = require("cheerio");
+const play = require("play-dl");
 
 // ✅ CORRECT PATH BASED ON YOUR STRUCTURE
 const flowcastRoutes = require("./server/routes/flowcast");
 
 const admin = require("./server/firebaseAdmin");
-const db = admin.firestore();
+const db = admin.apps.length ? admin.firestore() : null;
 /* ===========================================================
  END Firebase Admin
 =========================================================== */
@@ -86,14 +87,18 @@ app.post("/api/log_event", async (req, res) => {
       });
     }
 
-    await db.collection("user_events").add({
-      userId,
-      songId,
-      event,
-      playDuration,
-      songDuration,
-      timestamp: Date.now(),
-    });
+    if (db) {
+      await db.collection("user_events").add({
+        userId,
+        songId,
+        event,
+        playDuration,
+        songDuration,
+        timestamp: Date.now(),
+      });
+    } else {
+      console.warn("Skipped logging event because Firebase DB is not initialized.");
+    }
 
     return res.json({ success: true });
   } catch (err) {
@@ -103,86 +108,60 @@ app.post("/api/log_event", async (req, res) => {
 });
 
 /* -----------------------------------------------------------
- 🔐 FIXED: SECURITY MIDDLEWARE NOW AFTER /api/flowcast
------------------------------------------------------------ */
-
-/* -----------------------------------------------------------
- 🔊 Helper: ffmpeg + fpcalc for acoustic ID
------------------------------------------------------------ */
-function toWav(inputPath, outPath) {
-  const res = spawnSync(
-    "ffmpeg",
-    ["-y", "-i", inputPath, "-ar", "44100", "-ac", "2", outPath],
-    { encoding: "utf8" }
-  );
-  if (res.status !== 0) throw new Error("ffmpeg failed: " + res.stderr);
-  return outPath;
-}
-
-function fpcalc(filePath) {
-  const res = spawnSync("fpcalc", ["-json", filePath], {
-    encoding: "utf8",
-  });
-  if (res.status !== 0) throw new Error("fpcalc failed: " + res.stderr);
-  try {
-    return JSON.parse(res.stdout);
-  } catch (e) {
-    throw new Error("fpcalc parse error: " + e.message);
-  }
-}
-
-/* -----------------------------------------------------------
- 🎵 Endpoint: Song detection (AcoustID)
+ 🎵 Endpoint: Song detection (Shazam via RapidAPI — no binaries needed)
 ----------------------------------------------------------- */
 app.post("/api/detect", upload.single("demo"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "Missing file" });
+  if (!req.file) return res.status(400).json({ error: "Missing audio file" });
   const tmpPath = req.file.path;
-  const wavPath = tmpPath + ".wav";
+
+  const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "";
+  if (!RAPIDAPI_KEY) {
+    fs.unlink(tmpPath, () => {});
+    return res.status(500).json({ error: "RAPIDAPI_KEY not configured. See setup instructions." });
+  }
+
   try {
-    toWav(tmpPath, wavPath);
-    const info = fpcalc(wavPath);
-    const ACOUSTID_KEY = process.env.ACOUSTID_KEY || "";
-    if (!ACOUSTID_KEY)
-      return res.status(500).json({ error: "ACOUSTID_KEY not set" });
+    // Read file and base64-encode — Shazam accepts raw audio in any common format
+    const audioBuffer = fs.readFileSync(tmpPath);
+    const audioBase64 = audioBuffer.toString("base64");
 
-    const url = `https://api.acoustid.org/v2/lookup?client=${encodeURIComponent(
-      ACOUSTID_KEY
-    )}&fingerprint=${encodeURIComponent(
-      info.fingerprint
-    )}&duration=${Math.round(
-      info.duration
-    )}&meta=recordings+releasegroups+compress`;
+    console.log(`[detect] Audio size: ${audioBuffer.length} bytes, sending to Shazam...`);
 
-    const r = await fetch(url);
-    const j = await r.json();
-    const matches = [];
+    const response = await fetch("https://shazam.p.rapidapi.com/songs/detect", {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain",
+        "X-RapidAPI-Key": RAPIDAPI_KEY,
+        "X-RapidAPI-Host": "shazam.p.rapidapi.com",
+      },
+      body: audioBase64,
+    });
 
-    if (j.results && j.results.length) {
-      for (const result of j.results) {
-        if (result.recordings && result.recordings.length) {
-          for (const rec of result.recordings) {
-            matches.push({
-              title: rec.title || null,
-              artist: rec.artists?.map((a) => a.name).join(", ") || null,
-              score: result.score || null,
-              recordings: rec.id
-                ? `musicbrainz:recording:${rec.id}`
-                : null,
-            });
-          }
-        }
-      }
+    const data = await response.json();
+    console.log("[detect] Shazam raw response:", JSON.stringify(data).slice(0, 300));
+
+    if (!response.ok) {
+      return res.status(502).json({ error: "Shazam API error: " + (data.message || response.status) });
     }
 
-    res.json({ matches });
+    // Shazam returns { track: { title, subtitle, images, ... } }
+    if (data.track) {
+      return res.json({
+        matches: [{
+          title: data.track.title,
+          artist: data.track.subtitle,
+          score: 1.0,
+          cover: data.track.images?.coverart || null,
+        }],
+      });
+    }
+
+    return res.json({ matches: [] });
   } catch (err) {
-    console.error("detect error:", err.message || err);
+    console.error("[detect] Error:", err.message || err);
     res.status(500).json({ error: String(err.message || err) });
   } finally {
-    try {
-      fs.unlinkSync(tmpPath);
-      fs.unlinkSync(wavPath);
-    } catch {}
+    try { fs.unlinkSync(tmpPath); } catch {}
   }
 });
 
@@ -375,6 +354,39 @@ app.get("/proxy", async (req, res) => {
   } catch (err) {
     console.error("Proxy error:", err);
     res.status(500).send("Proxy server error");
+  }
+});
+
+/* -----------------------------------------------------------
+ 🎧 Stream YouTube Audio
+----------------------------------------------------------- */
+app.get("/api/stream", async (req, res) => {
+  const videoId = req.query.id;
+  if (!videoId) return res.status(400).send("Missing YouTube ID");
+
+  try {
+    const streamUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    
+    // play-dl securely fetches the stream URL by natively breaking YouTube ciphers
+    const stream = await play.stream(streamUrl, {
+      quality: 2 // 2 corresponds to highest audio quality
+    });
+
+    // Set formatting headers (play-dl usually outputs opus/webm streams securely)
+    res.setHeader("Content-Type", stream.type === "webm/opus" ? "audio/webm" : "audio/mpeg");
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+
+    try {
+      // Stream directly to client
+      stream.stream.pipe(res);
+    } catch(pipeErr) {
+      console.error("Pipe error:", pipeErr);
+      if (!res.headersSent) res.status(500).send("Pipe failed");
+    }
+  } catch (err) {
+    console.error("Stream proxy error using play-dl:", err.message);
+    if (!res.headersSent) res.status(500).send("Stream proxy failed: " + err.message);
   }
 });
 
