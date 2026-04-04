@@ -370,6 +370,35 @@ console.log("🎯 Detected genre/lang:", detectedLang, "|", normalizedAlbum.titl
 
 
 
+  // 🧠 ML EVENT: SKIP
+  if (selectedAlbum && isPlaying) {
+    let played = 0;
+    let duration = 0;
+    if ((selectedAlbum.category || "").toLowerCase() === "youtube" && youtubePlayerRef.current) {
+        played = youtubePlayerRef.current.getCurrentTime?.() || 0;
+        duration = youtubePlayerRef.current.getDuration?.() || 0;
+    } else if (audioRef.current) {
+        played = audioRef.current.currentTime || 0;
+        duration = audioRef.current.duration || 0;
+    }
+
+    if (played > 0 && duration > 0 && played < duration - 2) {
+      logUserEvent({
+        userId: currentUser?.uid || "guest_user",
+        songId: extractYouTubeId(selectedAlbum) || selectedAlbum.id,
+        event: "skip",
+        playDuration: played,
+        songDuration: duration,
+        songMeta: {
+          title: selectedAlbum.title || "",
+          artist: selectedAlbum.artist || "",
+          language: selectedAlbum.language || "",
+          genre: selectedAlbum.genre || "",
+        }
+      });
+    }
+  }
+
   // ✅ Update state for immersive panel
   setSelectedAlbum(normalizedAlbum);
   setAutoplayQueue([]);
@@ -478,13 +507,19 @@ if ((normalizedAlbum.category || "").toLowerCase() === "youtube") {
 
   console.log("🎬 Playing YouTube ID:", vid);
   // 🧠 ML EVENT: PLAY (YouTube)
-logUserEvent({
-  userId: currentUser?.uid || "guest_user",
-  songId: vid,                 // 🔥 MUST be the YouTube ID
-  event: "play",
-  playDuration: 0,
-  songDuration: 0,             // YT duration is async, OK for now
-});
+  logUserEvent({
+    userId: currentUser?.uid || "guest_user",
+    songId: vid,
+    event: "play",
+    playDuration: 0,
+    songDuration: 0,
+    songMeta: {
+      title: normalizedAlbum.title,
+      artist: normalizedAlbum.artist,
+      language: normalizedAlbum.language,
+      genre: normalizedAlbum.genre,
+    }
+  });
 
 
   // Reset any previous YT-related state cleanly
@@ -530,9 +565,16 @@ if (audio) {
     // 🧠 ML EVENT: PLAY (Local / Audius)
     logUserEvent({
       userId: currentUser?.uid || "guest_user",
+      songId: normalizedAlbum.id,
       event: "play",
       playDuration: 0,
       songDuration: audio.duration || 0,
+      songMeta: {
+        title: normalizedAlbum.title,
+        artist: normalizedAlbum.artist,
+        language: normalizedAlbum.language,
+        genre: normalizedAlbum.genre,
+      }
     });
 
   } catch (err) {
@@ -1355,6 +1397,12 @@ useEffect(() => {
       event: "complete",
       playDuration: audio.duration || 0,
       songDuration: audio.duration || 0,
+      songMeta: {
+        title: selectedAlbum.title,
+        artist: selectedAlbum.artist,
+        language: selectedAlbum.language,
+        genre: selectedAlbum.genre,
+      }
     });
   }
 
@@ -1729,6 +1777,12 @@ return (
     event: "complete",
     playDuration: played,
     songDuration: duration,
+    songMeta: {
+      title: selectedAlbum?.title || "",
+      artist: selectedAlbum?.artist || "",
+      language: selectedAlbum?.language || "",
+      genre: selectedAlbum?.genre || "",
+    }
   });
 
   playNext();

@@ -1,6 +1,8 @@
-sentence-transformers
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch
+sentence-transformers
 numpy
 scikit-learn
 fastapi
 uvicorn
+pymongo

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useNowPlaying, playNext, normalizeId, playPrevious, togglePlay } from "../state/useNowPlaying";
 import { setPlayerTime, setSeekListener } from "../state/usePlayerTime";
+import { logUserEvent } from "../../api/logUserEvent";
+import { auth } from "../../firebase";
 
 let ytApiLoaded = false;
 let ytApiLoadPromise = null;
@@ -69,6 +71,19 @@ export default function CustomAudioPlayer() {
         },
         onStateChange: (event) => {
           if (event.data === window.YT.PlayerState.ENDED) {
+            logUserEvent({
+              userId: auth.currentUser?.uid || "guest_user",
+              songId: current?.id || videoId,
+              event: "complete",
+              playDuration: event.target.getDuration() || 0,
+              songDuration: event.target.getDuration() || 0,
+              songMeta: {
+                title: current?.title || "",
+                artist: current?.artist || "",
+                language: current?.language || current?.lang || current?.genre || "",
+                genre: current?.genre || "",
+              }
+            });
             stopProgressLoop();
             playNext();
           }
@@ -140,6 +155,19 @@ export default function CustomAudioPlayer() {
     if (isPlaying) {
       p.playVideo();
       startProgressLoop();
+      logUserEvent({
+        userId: auth.currentUser?.uid || "guest_user",
+        songId: current?.id || lastVideoIdRef.current,
+        event: "play",
+        playDuration: 0,
+        songDuration: p.getDuration() || 0,
+        songMeta: {
+          title: current?.title || "",
+          artist: current?.artist || "",
+          language: current?.language || current?.lang || current?.genre || "",
+          genre: current?.genre || "",
+        }
+      });
     } else {
       p.pauseVideo();
       stopProgressLoop();

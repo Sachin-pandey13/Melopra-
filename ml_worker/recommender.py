@@ -1,9 +1,20 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import json
 import numpy as np
 from fastapi import FastAPI
 from pydantic import BaseModel
+
+import torch
+torch.set_num_threads(1)
+
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+
+# 🎯 Personalized recommender (additive — does not change existing /recommend)
+from personalized_recommender import router as personal_router, inject_data
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -18,6 +29,12 @@ with open("song_metadata.json", "r", encoding="utf-8") as f:
 print(f"✅ Embeddings + metadata loaded | Total songs: {len(songs)}")
 
 app = FastAPI()
+
+# 🎯 Share loaded data with personalized module
+inject_data(songs, embeddings)
+
+# 🎯 Mount personalized routes (/personalized-recommend)
+app.include_router(personal_router)
 
 
 # -----------------------------
