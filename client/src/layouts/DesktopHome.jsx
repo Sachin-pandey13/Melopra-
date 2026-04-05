@@ -9,6 +9,7 @@ import LoginForm from "../components/LoginForm";
 import PlaylistCard from "../components/PlaylistCard";
 import ContextMenu from "../components/ContextMenu";
 import OnboardingPage from "../components/OnboardingPage";
+import DesktopBottomPlayer from "../components/DesktopBottomPlayer";
 import { logUserEvent } from "../api/logUserEvent";
 import { getRecommendations } from "../api/getRecommendations";
 
@@ -318,7 +319,11 @@ const handleAlbumSelect = async (album, enqueueOnly = false) => {
     video: album.video || null,
   };
 
-  setPlayNextQueue((prev) => [...prev, normalizedQueued]);
+  // ✅ FIX: prepend so "Play Next" actually plays next (not last)
+  setPlayNextQueue((prev) => [
+    normalizedQueued,
+    ...prev.filter((p) => p.id !== normalizedQueued.id),
+  ]);
   return;
 }
 
@@ -738,15 +743,20 @@ const generateAutoplayQueue = async (seedAlbum) => {
   }
 
   /* ======================================================
-     STEP 3: LOCAL FALLBACK (STRICT ONLINE POLICY)
+     STEP 3: LOCAL FALLBACK
      ====================================================== */
-  console.warn("⚠️ No ML/YouTube autoplay found.");
+  console.warn("⚠️ No ML/YouTube autoplay found. Falling back to local cache.");
 
-  // 🔥 CRITICAL FIX:
-  // When ONLINE, do NOT autoplay from Firestore/local cache
-  // because it overrides recommendations and behaves like offline mode.
-  console.warn("🚫 ONLINE MODE: Blocking local/firebase fallback autoplay.");
-  return [];
+  try {
+    const cached = JSON.parse(
+      localStorage.getItem("melopra_cached_songs") || "[]"
+    );
+    const filtered = filterPlayed(cached).slice(0, 10);
+    return filtered;
+  } catch (err) {
+    console.warn("⚠️ Fallback to local cache failed:", err);
+    return [];
+  }
 };
 
 
@@ -765,6 +775,7 @@ const generateAutoplayQueue = async (seedAlbum) => {
 const {
   playNext,
   enqueue,
+  enqueueNext,
   enqueueMany,
   remove,
   move,
@@ -967,11 +978,12 @@ useEffect(() => {
 }, [currentUser]);
 
 
-useEffect(() => {
-  if (selectedAlbum) {
-    setIsImmersiveVisible(true);
-  }
-}, [selectedAlbum]);
+// Auto-open removed per user request: click bottom player to open right panel
+// useEffect(() => {
+//   if (selectedAlbum) {
+//     setIsImmersiveVisible(true);
+//   }
+// }, [selectedAlbum]);
 
 useEffect(() => {
   const handleResizeCursor = (e) => {
@@ -1618,6 +1630,46 @@ const handlePrev = () => {
   }
 };
 
+// 🔊 MediaSession API for Desktop (Background Play & Controls)
+useEffect(() => {
+  if (!selectedAlbum || !('mediaSession' in navigator)) return;
+
+  navigator.mediaSession.metadata = new window.MediaMetadata({
+    title: selectedAlbum.title || "Unknown Title",
+    artist: selectedAlbum.artist || "Unknown Artist",
+    album: "Melopra",
+    artwork: [
+      { src: selectedAlbum.image || selectedAlbum.thumbnail || "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  });
+
+  navigator.mediaSession.setActionHandler("play", () => {
+    if (!isPlaying) isPlaying ? player.pause() : player.resume();
+  });
+  navigator.mediaSession.setActionHandler("pause", () => {
+    if (isPlaying) player.pause();
+  });
+  navigator.mediaSession.setActionHandler("previoustrack", handlePrev);
+  navigator.mediaSession.setActionHandler("nexttrack", playNext);
+
+  // Position state
+  const audio = audioRef.current;
+  if (audio) {
+    const updatePosition = () => {
+      try {
+        if (audio.duration) {
+          navigator.mediaSession.setPositionState({
+            duration: audio.duration,
+            playbackRate: 1,
+            position: audio.currentTime,
+          });
+        }
+      } catch (e) {}
+    };
+    audio.addEventListener("timeupdate", updatePosition);
+    return () => audio.removeEventListener("timeupdate", updatePosition);
+  }
+}, [selectedAlbum, isPlaying, playNext, handlePrev, player]);
 
 return (
   <div className="app-root">
@@ -1661,7 +1713,7 @@ return (
   onLike={library.toggleFavorite}
 />
 
-        <div className="flex flex-grow gap-4 overflow-hidden p-2 relative h-full">
+        <div className="flex flex-grow gap-4 overflow-hidden p-2 relative">
 
 <LeftSidebar
   library={library}
@@ -1707,6 +1759,7 @@ return (
   immersivePanelRef={immersivePanelRef}
 
   isImmersiveVisible={isImmersiveVisible}
+  setIsImmersiveVisible={setIsImmersiveVisible}
   selectedAlbum={selectedAlbum}
 
   panelRight={panelRight}
@@ -1716,6 +1769,7 @@ return (
   startResize={startResize}
 
   audioRef={audioRef}
+  youtubePlayerRef={youtubePlayerRef}
   videoRef={videoRef}
   isPlaying={isPlaying}
 
@@ -1725,9 +1779,26 @@ return (
 
   albumArtSize={albumArtSize}
   canvasVideo={canvasVideo}
+  onNext={playNext}
+  onPrev={handlePrev}
 />
      </div>
      
+     {/* Desktop Bottom Player — always visible when a song is loaded */}
+     {selectedAlbum && (
+       <DesktopBottomPlayer
+         selectedAlbum={selectedAlbum}
+         isPlaying={isPlaying}
+         audioRef={audioRef}
+         youtubePlayerRef={youtubePlayerRef}
+         onPlayPause={isPlaying ? player.pause : player.resume}
+         onNext={playNext}
+         onPrev={handlePrev}
+         isImmersiveVisible={isImmersiveVisible}
+         toggleImmersive={() => setIsImmersiveVisible((v) => !v)}
+       />
+     )}
+
 <Overlays
   currentUser={currentUser}
   hasInteracted={hasInteracted}
@@ -1849,11 +1920,14 @@ return (
   />
 )}
 
-{/* 🔥 GLOBAL CONTEXT MENU (production) */}
 <ContextMenu
   onAddToQueue={(item) => {
     if (!item) return;
-    enqueue(item); // ✅ NOT playNext.enqueue
+    enqueue(item);
+  }}
+  onPlayNext={(item) => {
+    if (!item) return;
+    enqueueNext(item);
   }}
   onAddToPlaylist={(item) => {
     if (!item) return;

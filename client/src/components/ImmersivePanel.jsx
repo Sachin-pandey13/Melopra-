@@ -9,13 +9,15 @@ import "../styles/LiveAlbumArt.css";
 
 export default function ImmersivePanel({
   audioRef,
+  youtubePlayerRef,   // ← NEW
   isPlaying,
   onPlayPause,
   selectedAlbum,
   albumList,
-  onAlbumSelect,
   panelGlowColor = "rgba(168, 85, 247, 0.4)",
   canvasVideo,
+  onNext,
+  onPrev,
 }) {
   const [view, setView] = useState("lyrics");
   const [currentLineIndex, setCurrentLineIndex] = useState(0);
@@ -24,16 +26,8 @@ export default function ImmersivePanel({
   const videoContainerRef = useRef(null);
 
   // --- Handle prev/next song ---
-  const currentIndex = albumList.findIndex((a) => a.id === selectedAlbum?.id);
-  const playPrev = () => {
-    const prev =
-      albumList[(currentIndex - 1 + albumList.length) % albumList.length];
-    onAlbumSelect(prev);
-  };
-  const playNext = () => {
-    const next = albumList[(currentIndex + 1) % albumList.length];
-    onAlbumSelect(next);
-  };
+  const playPrev = onPrev;
+  const playNext = onNext;
 
   // --- Sync lyrics ---
   useEffect(() => {
@@ -227,10 +221,15 @@ export default function ImmersivePanel({
             : "mt-4 flex flex-col items-center"
         }`}
       >
-        <SongProgressBar audioRef={audioRef} isPlaying={isPlaying} />
+        <SongProgressBar
+            audioRef={audioRef}
+            youtubePlayerRef={youtubePlayerRef}
+            selectedAlbum={selectedAlbum}
+          />
         <div className="flex justify-center items-center mt-4 gap-4">
           <button
-            onClick={playPrev}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); playPrev(); }}
             className="rounded-full bg-[#444] px-4 py-2 text-white hover:bg-[#00ffc3] hover:text-black"
           >
             ⏮ Prev
@@ -241,10 +240,28 @@ export default function ImmersivePanel({
             onPlayPause={onPlayPause}
           />
           <button
-            onClick={playNext}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); playNext(); }}
             className="rounded-full bg-[#444] px-4 py-2 text-white hover:bg-[#00ffc3] hover:text-black"
           >
             Next ⏭
+          </button>
+        </div>
+        
+        {/* PREMIUM DOWNLOAD BUTTON */}
+        <div className="flex justify-center mt-6 mb-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              alert("Premium Download coming soon!\n\n(Awaiting legal clearance for your region & copyright holders)");
+            }}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 px-6 py-2 text-white font-medium shadow-lg hover:scale-105 transition-transform"
+          >
+            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Offine
           </button>
         </div>
       </div>

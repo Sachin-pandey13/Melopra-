@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import LoginModal from "../../components/LoginModal";
 import useFirestoreProfileImage from "../../hooks/useFirestoreProfileImage";
+import usePWAInstall from "../../hooks/usePWAInstall";
 import { getFirestore, doc, updateDoc } from "firebase/firestore";
 import { getAuth, updateProfile } from "firebase/auth";
 
@@ -17,6 +18,8 @@ export default function MobileTopBar({
   const [showLogin, setShowLogin] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const { isInstallable, promptInstall } = usePWAInstall();
 
   const fileInputRef = useRef(null);
   const profileFromFirestore = useFirestoreProfileImage(currentUser?.uid);
@@ -239,6 +242,42 @@ export default function MobileTopBar({
             zIndex: 99,
           }}
         />
+      )}
+
+      {/* Global PWA Install Banner/Button (only shows if installation is pending) */}
+      {isInstallable && (
+        <div
+          style={{
+            width: "100%",
+            background: "rgba(29, 185, 84, 0.15)",
+            borderBottom: "1px solid rgba(29, 185, 84, 0.3)",
+            padding: "8px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            zIndex: 20,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <img src="/icon-192.png" alt="Melopra" style={{ width: 24, height: 24, borderRadius: 6 }} />
+            <span style={{ fontSize: 13, fontWeight: 500, color: "#1DB954" }}>Get the Melopra App</span>
+          </div>
+          <button
+            onClick={promptInstall}
+            style={{
+              padding: "4px 12px",
+              borderRadius: 12,
+              background: "#1DB954",
+              border: "none",
+              color: "white",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Install
+          </button>
+        </div>
       )}
 
       {/* Login Modal */}

@@ -1,28 +1,25 @@
 import { useState, useEffect } from "react";
 
-const CORS_PROXY = "https://corsproxy.io/?";
+const API = "https://melopra-backend.onrender.com";
 
 /* ---------- Deezer Artist Search ---------- */
 async function searchDeezerArtists(query) {
   if (!query || query.trim().length < 2) return [];
 
   try {
-    const url = `${CORS_PROXY}${encodeURIComponent(
-      `https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}&limit=15`
-    )}`;
+    const url = `${API}/api/deezer-artist?artist=${encodeURIComponent(query)}`;
     const res = await fetch(url);
     const data = await res.json();
 
-    if (!data.data) return [];
+    if (!data.artists) return [];
 
-    return data.data.map((artist) => {
-      const rawImg = artist.picture_medium || artist.picture || "";
+    return data.artists.map((artist) => {
       return {
         id: `deezer-${artist.id}`,
         name: artist.name,
-        image: rawImg,
+        image: artist.image || "",
         channelId: `deezer-${artist.id}`,
-        fans: artist.nb_fan || 0,
+        fans: artist.fans || 0,
       };
     });
   } catch (err) {

@@ -141,6 +141,18 @@ export default function useQueueManager({
     [setPlayNextQueue]
   );
 
+  const enqueueNext = useCallback(
+    (item) => {
+      if (!item?.id) return;
+
+      setPlayNextQueue((prev) => {
+        const existing = prev.filter((p) => normalizeId(p) !== normalizeId(item));
+        return [item, ...existing];
+      });
+    },
+    [setPlayNextQueue]
+  );
+
   const enqueueMany = useCallback(
     (items = []) => {
       if (!Array.isArray(items)) return;
@@ -261,6 +273,7 @@ export default function useQueueManager({
   return {
     playNext: next,
     enqueue,
+    enqueueNext,
     enqueueMany,
     remove,
     move,

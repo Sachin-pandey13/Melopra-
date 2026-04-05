@@ -313,8 +313,35 @@ export default function ExpandedPlayer() {
   </div>
 </div>
 
-
-
+        {/* PREMIUM DOWNLOAD BUTTON */}
+        <div style={{ width: "100%", display: "flex", justifyContent: "center", marginTop: 24, marginBottom: 8 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              alert("Premium Download coming soon!\n\n(Awaiting legal clearance for your region & copyright holders)");
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 24px",
+              borderRadius: 20,
+              background: "linear-gradient(135deg, #1DB954, #1ed760)",
+              border: "none",
+              color: "white",
+              fontWeight: 600,
+              fontSize: 14,
+              boxShadow: "0 4px 14px rgba(29, 185, 84, 0.4)",
+              cursor: "pointer",
+            }}
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Offline
+          </button>
+        </div>
         {/* LYRICS PREVIEW */}
         {showLyrics && (
           <div style={lyricsPanel}>

@@ -374,6 +374,7 @@ app.get(
             id:    a.id,
             name:  a.name,
             image: a.picture_medium || "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png",
+            fans:  a.nb_fan || 0,
           }))
           .slice(0, 12);
 
@@ -388,6 +389,7 @@ app.get(
               id:    a.id,
               name:  a.name,
               image: a.picture_medium || "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png",
+              fans:  a.nb_fan || 0,
             }))
             .slice(0, 12);
         }

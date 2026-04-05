@@ -6,6 +6,7 @@ const MENU_HEIGHT = 168;  // 3 items × ~56px
 
 export default function ContextMenu({
   onAddToQueue,
+  onPlayNext,
   onAddToPlaylist,
   onToggleLike,
 }) {
@@ -45,6 +46,12 @@ export default function ContextMenu({
       <MenuButton
         label="➕ Add to Queue"
         onClick={() => onAddToQueue(item)}
+        close={closeMenu}
+      />
+
+      <MenuButton
+        label="⏭ Play Next"
+        onClick={() => onPlayNext(item)}
         close={closeMenu}
       />
 

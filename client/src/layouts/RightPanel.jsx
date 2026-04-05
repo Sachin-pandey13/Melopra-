@@ -11,8 +11,10 @@ export default function RightPanel({
   isResizing,
 
   startResize,
+  setIsImmersiveVisible,
 
   audioRef,
+  youtubePlayerRef,   // ← NEW
   videoRef,
   isPlaying,
 
@@ -22,6 +24,8 @@ export default function RightPanel({
 
   albumArtSize,
   canvasVideo,
+  onNext,
+  onPrev,
 }) {
   if (!isImmersiveVisible || !selectedAlbum) return null;
 
@@ -68,6 +72,7 @@ export default function RightPanel({
         <div className="relative z-20 h-full w-full">
           <ImmersivePanel
             audioRef={audioRef}
+            youtubePlayerRef={youtubePlayerRef}
             videoRef={videoRef}
             isPlaying={isPlaying}
             onPlayPause={player.playPause}
@@ -75,12 +80,22 @@ export default function RightPanel({
             albumList={albums}
             onAlbumSelect={handleAlbumSelect}
             panelGlowColor={panelGlowColor}
-            onNext={player.playNext}
+            onNext={onNext}
+            onPrev={onPrev}
             onSeek={player.seek}
             size={Math.min(520, Math.round(albumArtSize * 1.8))}
             canvasVideo={canvasVideo}
           />
         </div>
+
+        {/* Collapse Button */}
+        <button
+          onClick={() => setIsImmersiveVisible(false)}
+          className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition"
+          title="Collapse Player"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 9l-7 7-7-7"/></svg>
+        </button>
 
         {/* Soft overlay */}
         <div

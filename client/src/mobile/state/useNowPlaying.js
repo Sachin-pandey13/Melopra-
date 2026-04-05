@@ -173,6 +173,23 @@ export function enqueue(item, source = "manual") {
   });
 }
 
+export function enqueueNext(item, source = "manual") {
+  if (!item) return;
+
+  // 🚫 BLOCK cache injection while online
+  if (source === "cache" && !isOffline()) {
+    console.warn("🚫 Blocked cache enqueueNext (online mode)");
+    return;
+  }
+
+  const filtered = state.queue.filter((s) => normalizeId(s) !== normalizeId(item));
+  
+  setState({
+    queue: uniqueQueue([item, ...filtered]),
+    queueSource: source,
+  });
+}
+
 export function enqueueMany(items = [], source = "manual") {
   if (!Array.isArray(items) || items.length === 0) return;
 

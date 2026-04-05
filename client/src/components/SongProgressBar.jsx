@@ -1,96 +1,127 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
-export default function SongProgressBar({ audioRef }) {
+export default function SongProgressBar({ audioRef, youtubePlayerRef, selectedAlbum }) {
   const progressRef = useRef(null);
-  const [progress, setProgress] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  const [progress, setProgress]       = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration]       = useState(0);
+  const [isDragging, setIsDragging]   = useState(false);
+  const [hoverX, setHoverX]           = useState(null);
   const [tooltipTime, setTooltipTime] = useState(0);
-  const [hoverX, setHoverX] = useState(0);
+
+  const isYouTube = selectedAlbum?.category?.toLowerCase() === 'youtube';
 
   const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  // ─── Poll every 500 ms — works for both YT iframe and native <audio> ───
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    const tick = () => {
+      if (isDragging) return;
+      try {
+        if (isYouTube) {
+          const yt = youtubePlayerRef?.current;
+          if (!yt?.getCurrentTime) return;
+          const cur = yt.getCurrentTime();
+          const dur = yt.getDuration?.() || 0;
+          if (dur > 0) {
+            setCurrentTime(cur);
+            setDuration(dur);
+            setProgress((cur / dur) * 100);
+          }
+        } else {
+          const audio = audioRef?.current;
+          if (!audio || !audio.duration || isNaN(audio.duration)) return;
+          setCurrentTime(audio.currentTime);
+          setDuration(audio.duration);
+          setProgress((audio.currentTime / audio.duration) * 100);
+        }
+      } catch (_) {}
+    };
 
-    const updateProgress = () => {
-      if (!isDragging) {
-        setProgress((audio.currentTime / audio.duration) * 100 || 0);
+    tick(); // run once immediately on song change
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [isYouTube, audioRef, youtubePlayerRef, isDragging, selectedAlbum]);
+
+  // ─── Seek ───
+  const seekToPercent = useCallback((pct) => {
+    const p = Math.min(Math.max(pct, 0), 1);
+    try {
+      if (isYouTube) {
+        const yt = youtubePlayerRef?.current;
+        const dur = yt?.getDuration?.() || 0;
+        if (dur > 0) yt.seekTo(p * dur, true);
+      } else {
+        const audio = audioRef?.current;
+        if (audio?.duration && !isNaN(audio.duration)) {
+          audio.currentTime = p * audio.duration;
+        }
       }
-    };
+    } catch (_) {}
+    setProgress(p * 100);
+  }, [isYouTube, audioRef, youtubePlayerRef]);
 
-    audio.addEventListener('timeupdate', updateProgress);
-    return () => {
-      audio.removeEventListener('timeupdate', updateProgress);
-    };
-  }, [audioRef, isDragging]);
-
-  const handleSeek = (e) => {
-    const rect = progressRef.current.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left;
-    const percent = offsetX / rect.width;
-    const newTime = percent * audioRef.current.duration;
-    audioRef.current.currentTime = newTime;
-    setProgress(percent * 100);
+  const pctFromEvent = (e) => {
+    const rect = progressRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    return (e.clientX - rect.left) / rect.width;
   };
 
-  const handleMouseDown = (e) => {
-    setIsDragging(true);
-    handleSeek(e);
-  };
-
+  const handleMouseDown = (e) => { setIsDragging(true); seekToPercent(pctFromEvent(e)); };
   const handleMouseMove = (e) => {
-    if (!progressRef.current || !audioRef.current) return;
+    if (!progressRef.current) return;
     const rect = progressRef.current.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left;
-    const percent = Math.min(Math.max(offsetX / rect.width, 0), 1);
-    setHoverX(offsetX);
-    setTooltipTime(percent * audioRef.current.duration);
-
-    if (isDragging) {
-      audioRef.current.currentTime = percent * audioRef.current.duration;
-      setProgress(percent * 100);
-    }
+    setHoverX(e.clientX - rect.left);
+    setTooltipTime(pctFromEvent(e) * duration);
+    if (isDragging) seekToPercent(pctFromEvent(e));
   };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
+  const handleMouseUp  = (e) => { if (isDragging) seekToPercent(pctFromEvent(e)); setIsDragging(false); };
+  const handleClick    = (e) => { if (!isDragging) seekToPercent(pctFromEvent(e)); };
 
   return (
-    <div className="w-full flex justify-center mt-4">
+    <div className="w-full flex flex-col items-center gap-1 select-none">
+      {/* Time labels */}
+      <div className="w-full flex justify-between text-[11px] text-white/40 px-0.5">
+        <span>{formatTime(currentTime)}</span>
+        <span>{formatTime(duration)}</span>
+      </div>
+
+      {/* Track */}
       <div
         ref={progressRef}
-        className="relative w-full max-w-md h-3 bg-gray-700 rounded-lg cursor-pointer group"
-        onClick={handleSeek}
+        className="relative w-full h-[5px] rounded-full bg-white/10 cursor-pointer group"
+        onClick={handleClick}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={() => setIsDragging(false)}
+        onMouseLeave={() => { setIsDragging(false); setHoverX(null); }}
       >
-        {/* Filled progress */}
+        {/* Filled bar */}
         <div
-          className="h-full bg-purple-500 rounded-lg"
-          style={{ width: `${progress}%` }}
+          className="h-full rounded-full bg-white"
+          style={{ width: `${progress}%`, transition: isDragging ? 'none' : 'width 0.5s linear' }}
         />
 
-        {/* Progress circle */}
+        {/* Thumb dot — visible on hover */}
         <div
-          className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-purple-400 border-2 border-white"
-          style={{ left: `calc(${progress}% - 8px)` }}
+          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+          style={{ left: `calc(${progress}% - 6px)` }}
         />
 
-        {/* Tooltip */}
-        <div
-          className="absolute -top-8 left-0 px-2 py-1 text-sm bg-black bg-opacity-80 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-          style={{ transform: `translateX(${hoverX}px)` }}
-        >
-          {formatTime(tooltipTime)}
-        </div>
+        {/* Hover tooltip */}
+        {hoverX !== null && (
+          <div
+            className="absolute -top-7 px-2 py-0.5 text-xs bg-black/80 text-white rounded pointer-events-none whitespace-nowrap"
+            style={{ left: hoverX, transform: 'translateX(-50%)' }}
+          >
+            {formatTime(tooltipTime)}
+          </div>
+        )}
       </div>
     </div>
   );

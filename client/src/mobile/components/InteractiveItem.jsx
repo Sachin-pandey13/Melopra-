@@ -12,7 +12,6 @@ export default function InteractiveItem({
   onSwipeLeft,
   onLongPress,
 }) {
-  const [pressed, setPressed] = useState(false);
   const [dx, setDx] = useState(0);
   const [longPressActive, setLongPressActive] = useState(false);
 
@@ -41,8 +40,6 @@ export default function InteractiveItem({
     startRef.current = { x: e.clientX, y: e.clientY };
     deltaRef.current = { dx: 0, dy: 0 };
 
-    setPressed(true);
-
     // Start long-press timer
     longPressTimer.current = setTimeout(() => {
       if (isScrollingRef.current) return;
@@ -58,18 +55,18 @@ export default function InteractiveItem({
 
   /* ---------- POINTER MOVE ---------- */
   const onPointerMove = (e) => {
-    if (!pressed || hasEndedRef.current || isScrollingRef.current) return;
+    if (hasEndedRef.current || isScrollingRef.current) return;
 
     const dxVal = e.clientX - startRef.current.x;
     const dyVal = e.clientY - startRef.current.y;
 
     deltaRef.current = { dx: dxVal, dy: dyVal };
 
-    // Detect if user is scrolling vertically
-    if (Math.abs(dyVal) > TAP_THRESHOLD && Math.abs(dyVal) > Math.abs(dxVal)) {
+    // ✅ FIX: Relaxed to 6px (was 4px) so vertical swipes release to
+    // native scroll instantly — eliminates the "sticky/levitation" feel
+    if (Math.abs(dyVal) > 6 && Math.abs(dyVal) > Math.abs(dxVal)) {
       isScrollingRef.current = true;
       hasEndedRef.current = true;
-      setPressed(false);
       setDx(0);
       clearLongPress();
       try {
@@ -95,7 +92,6 @@ export default function InteractiveItem({
 
     const { dx: finalDx, dy: finalDy } = deltaRef.current;
 
-    setPressed(false);
     setDx(0);
     deltaRef.current = { dx: 0, dy: 0 };
 
@@ -129,12 +125,10 @@ export default function InteractiveItem({
       onPointerCancel={onPointerUp}
       style={{
         position: "relative",
-        transform: `translateX(${dx}px) scale(${longPressActive ? 0.94 : pressed ? 1.03 : 1})`,
-        transition: pressed ? "transform 60ms ease" : "transform 180ms ease",
+        transform: `translateX(${dx}px) scale(${longPressActive ? 0.96 : 1})`,
+        transition: "transform 180ms ease",
         boxShadow: longPressActive
           ? "0 0 0 2px #4da6ff, 0 8px 24px rgba(77,166,255,0.3)"
-          : pressed
-          ? "0 8px 20px rgba(0,0,0,0.4)"
           : "none",
         borderRadius: 12,
         touchAction: "pan-y",
