@@ -5,7 +5,7 @@ import {
   RecaptchaVerifier, 
   signInWithPhoneNumber 
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCoLx-CILAz1SqRkJ-PpOt-FYfGgZ9xeO8", // ← you will add your key
@@ -21,6 +21,15 @@ const app = initializeApp(firebaseConfig);
 // Auth & DB
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Enable Offline Persistence
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code == 'failed-precondition') {
+    console.warn("Multiple tabs open, offline DB unavailable in this tab.");
+  } else if (err.code == 'unimplemented') {
+    console.warn("Current browser does not support IndexedDB offline persistence.");
+  }
+});
 
 // Phone Auth + Invisible Recaptcha
 export const setUpRecaptcha = (phone) => {

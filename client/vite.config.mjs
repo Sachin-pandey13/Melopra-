@@ -61,6 +61,22 @@ export default defineConfig(({ mode }) => {
                   statuses: [0, 200]
                 }
               }
+            },
+            {
+              // LAWFUL CACHING: Only intercepts native/proxy audio streams
+              // Ignore YouTube iframe streams completely.
+              urlPattern: ({ url }) => url.pathname.startsWith('/api/stream') || url.pathname.endsWith('.mp3'),
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'melopra-native-audio-cache',
+                expiration: {
+                  maxEntries: 50, // Keep last 50 native songs offline
+                  maxAgeSeconds: 60 * 60 * 24 * 7 // Keep for 7 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
             }
           ]
         }
