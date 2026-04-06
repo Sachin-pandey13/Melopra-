@@ -373,7 +373,7 @@ app.get(
           .map(a => ({
             id:    a.id,
             name:  a.name,
-            image: `https://api.deezer.com/artist/${a.id}/image`,
+            image: `/api/artist-image/${a.id}`,
             fans:  a.nb_fan || 0,
           }))
           .slice(0, 12);
@@ -388,7 +388,7 @@ app.get(
             .map(a => ({
               id:    a.id,
               name:  a.name,
-              image: `https://api.deezer.com/artist/${a.id}/image`,
+              image: `/api/artist-image/${a.id}`,
               fans:  a.nb_fan || 0,
             }))
             .slice(0, 12);
@@ -406,13 +406,49 @@ app.get(
       console.error("Deezer artist error:", err.message);
       return res.json({
         artists: [
-          { id: "13", name: "Eminem", image: "https://api.deezer.com/artist/13/image" },
-          { id: "1191615", name: "Arijit Singh", image: "https://api.deezer.com/artist/1191615/image" },
+          { id: "13", name: "Eminem", image: "/api/artist-image/13" },
+          { id: "1191615", name: "Arijit Singh", image: "/api/artist-image/1191615" },
         ],
       });
     }
   }
 );
+
+/* -----------------------------------------------------------
+ 🖼️  Artist Image Proxy
+    Fetches Deezer artist images server-side so the browser
+    never hits dzcdn.net directly (which blocks browser requests).
+----------------------------------------------------------- */
+app.get("/api/artist-image/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!id || !/^\d+$/.test(id)) return res.status(400).send("Invalid artist id");
+
+  try {
+    // Fetch the artist object to get the real picture_medium URL
+    const artistRes = await axios.get(`https://api.deezer.com/artist/${id}`, {
+      timeout: 5000,
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    const imageUrl = artistRes.data?.picture_medium;
+    if (!imageUrl) throw new Error("No image URL in artist data");
+
+    // Proxy the CDN image through the server to bypass browser blocks
+    const imgRes = await axios.get(imageUrl, {
+      timeout: 8000,
+      responseType: "stream",
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+
+    res.setHeader("Content-Type", imgRes.headers["content-type"] || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400"); // cache 24h in browser
+    imgRes.data.pipe(res);
+  } catch (err) {
+    console.warn(`[artist-image] Failed for id ${id}:`, err.message);
+    // Return a lightweight SVG placeholder instead of an error
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.send(`<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><circle cx='100' cy='100' r='100' fill='%23333'/><text x='100' y='125' text-anchor='middle' font-size='80' fill='%23888'>🎤</text></svg>`);
+  }
+});
 
 /* -----------------------------------------------------------
  🎧 Proxy Route (stream passthrough)

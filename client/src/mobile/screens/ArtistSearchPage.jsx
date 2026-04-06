@@ -25,7 +25,12 @@ async function searchDeezerArtists(query) {
     return data.artists.map((artist) => ({
       id: `deezer-${artist.id}`,
       name: artist.name,
-      image: artist.image || "",
+      // Image may be a relative path like /api/artist-image/123 — prepend BASE_URL
+      image: artist.image
+        ? artist.image.startsWith("http")
+          ? artist.image
+          : `${BASE_URL}${artist.image}`
+        : "",
       channelId: `deezer-${artist.id}`,
       fans: artist.fans || 0,
     }));
