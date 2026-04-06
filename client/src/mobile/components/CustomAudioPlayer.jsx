@@ -1,180 +1,134 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { useNowPlaying, playNext, normalizeId, playPrevious, togglePlay } from "../state/useNowPlaying";
 import { setPlayerTime, setSeekListener } from "../state/usePlayerTime";
 import { logUserEvent } from "../../api/logUserEvent";
 import { auth } from "../../firebase";
 
-let ytApiLoaded = false;
-let ytApiLoadPromise = null;
-
-function loadYTApi() {
-  if (ytApiLoaded) return Promise.resolve();
-  if (ytApiLoadPromise) return ytApiLoadPromise;
-  ytApiLoadPromise = new Promise((resolve) => {
-    if (window.YT && window.YT.Player) { ytApiLoaded = true; resolve(); return; }
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(tag);
-    window.onYouTubeIframeAPIReady = () => { ytApiLoaded = true; resolve(); };
-  });
-  return ytApiLoadPromise;
-}
+const SERVER_URL = import.meta.env.VITE_API_URL || 
+  (window.location.hostname === "localhost" ? "http://localhost:4000" : "https://melopra-backend.onrender.com");
 
 export default function CustomAudioPlayer() {
   const { current, isPlaying } = useNowPlaying();
 
-  const playerRef = useRef(null);  // YT.Player instance
-  const containerRef = useRef(null);
+  const audioRef = useRef(null);
   const lastVideoIdRef = useRef(null);
-  const isReadyRef = useRef(false);
-  const timerRef = useRef(null);
+  const currentRef = useRef(current);
 
-  // Initialize/replace the YouTube player
-  const initPlayer = useCallback((videoId) => {
-    if (!containerRef.current) return;
+  // Sync current ref safely for closures
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
 
-    // Destroy the old player gracefully
-    if (playerRef.current) {
-      try { playerRef.current.destroy(); } catch(e) {}
-      playerRef.current = null;
-      isReadyRef.current = false;
-    }
+  // Audio Setup and Event Listeners
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
 
-    // Create a placeholder div for the player to mount into
-    const mountId = "yt-player-mount";
-    let mount = document.getElementById(mountId);
-    if (!mount) {
-      mount = document.createElement("div");
-      mount.id = mountId;
-      containerRef.current.appendChild(mount);
-    }
-
-    playerRef.current = new window.YT.Player(mountId, {
-      height: "1",
-      width: "1",
-      videoId,
-      playerVars: {
-        autoplay: 1,
-        controls: 0,
-        playsinline: 1,
-        disablekb: 1,
-        fs: 0,
-        modestbranding: 1,
-        origin: window.location.origin,
-      },
-      events: {
-        onReady: (event) => {
-          isReadyRef.current = true;
-          if (isPlaying) event.target.playVideo();
-          else event.target.pauseVideo();
-          startProgressLoop();
-        },
-        onStateChange: (event) => {
-          if (event.data === window.YT.PlayerState.ENDED) {
-            logUserEvent({
-              userId: auth.currentUser?.uid || "guest_user",
-              songId: current?.id || videoId,
-              event: "complete",
-              playDuration: event.target.getDuration() || 0,
-              songDuration: event.target.getDuration() || 0,
-              songMeta: {
-                title: current?.title || "",
-                artist: current?.artist || "",
-                language: current?.language || current?.lang || current?.genre || "",
-                genre: current?.genre || "",
-              }
+    const onTimeUpdate = () => {
+      const cur = audio.currentTime || 0;
+      const dur = audio.duration || 0;
+      if (dur > 0) {
+        setPlayerTime(cur, dur);
+        if ("mediaSession" in navigator && navigator.mediaSession.playbackState === "playing") {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: dur,
+              playbackRate: 1,
+              position: Math.min(cur, dur),
             });
-            stopProgressLoop();
-            playNext();
-          }
-        },
-        onError: (event) => {
-          console.warn("YT Player error, skipping:", event.data);
-          playNext();
+          } catch(e) {}
         }
       }
-    });
+    };
+
+    const onEnded = () => {
+      const track = currentRef.current;
+      logUserEvent({
+        userId: auth.currentUser?.uid || "guest_user",
+        songId: track?.id || lastVideoIdRef.current,
+        event: "complete",
+        playDuration: audio.duration || 0,
+        songDuration: audio.duration || 0,
+        songMeta: {
+          title: track?.title || "",
+          artist: track?.artist || "",
+          language: track?.language || track?.lang || track?.genre || "",
+          genre: track?.genre || "",
+        }
+      });
+      playNext();
+    };
+
+    const onError = (e) => {
+      console.warn("Audio stream error, skipping:", e);
+      playNext();
+    };
+
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+    };
+  }, []);
+
+  // Track changed -> Load new stream
+  useEffect(() => {
+    if (!current?.id || !audioRef.current) return;
+    const videoId = normalizeId(current.id);
+
+    if (lastVideoIdRef.current !== videoId) {
+      lastVideoIdRef.current = videoId;
+      
+      const streamUrl = `${SERVER_URL}/api/stream?id=${videoId}`;
+      audioRef.current.src = streamUrl;
+      audioRef.current.load();
+      
+      if (isPlaying) {
+        audioRef.current.play().catch(e => console.warn("Auto-play prevented", e));
+      }
+    }
+  }, [current?.id]);
+
+  // Play/Pause toggler
+  useEffect(() => {
+    if (!audioRef.current || !audioRef.current.src) return;
+    if (isPlaying) {
+      audioRef.current.play().then(() => {
+        const track = currentRef.current;
+        logUserEvent({
+          userId: auth.currentUser?.uid || "guest_user",
+          songId: track?.id || lastVideoIdRef.current,
+          event: "play",
+          playDuration: 0,
+          songDuration: audioRef.current?.duration || 0,
+          songMeta: {
+            title: track?.title || "",
+            artist: track?.artist || "",
+            language: track?.language || track?.lang || track?.genre || "",
+            genre: track?.genre || "",
+          }
+        });
+      }).catch(e => console.warn("Play prevented:", e));
+    } else {
+      audioRef.current.pause();
+    }
   }, [isPlaying]);
 
-  // Progress tracking loop
-  const startProgressLoop = useCallback(() => {
-    stopProgressLoop();
-    timerRef.current = setInterval(() => {
-      const p = playerRef.current;
-      if (!p || !isReadyRef.current) return;
-      try {
-        const cur = p.getCurrentTime() || 0;
-        const dur = p.getDuration() || 0;
-        if (dur > 0) {
-          setPlayerTime(cur, dur);
-          if ("mediaSession" in navigator && navigator.mediaSession.playbackState === "playing") {
-            try {
-              navigator.mediaSession.setPositionState({
-                duration: dur,
-                playbackRate: 1,
-                position: Math.min(cur, dur),
-              });
-            } catch(e) {}
-          }
-        }
-      } catch(e) {}
-    }, 500);
-  }, []);
-
-  const stopProgressLoop = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-  }, []);
-
-  // Seek listener support
+  // Seek listener
   useEffect(() => {
     setSeekListener((time) => {
-      if (playerRef.current && isReadyRef.current) {
-        playerRef.current.seekTo(time, true);
+      if (audioRef.current && !isNaN(audioRef.current.duration)) {
+        audioRef.current.currentTime = time;
       }
     });
     return () => setSeekListener(() => {});
   }, []);
 
-  // Load new video when track changes
-  useEffect(() => {
-    if (!current?.id) return;
-    const videoId = normalizeId(current.id);
-
-    loadYTApi().then(() => {
-      if (lastVideoIdRef.current !== videoId) {
-        lastVideoIdRef.current = videoId;
-        initPlayer(videoId);
-      }
-    });
-  }, [current?.id]);
-
-  // Control play/pause on isPlaying changes
-  useEffect(() => {
-    const p = playerRef.current;
-    if (!p || !isReadyRef.current) return;
-    if (isPlaying) {
-      p.playVideo();
-      startProgressLoop();
-      logUserEvent({
-        userId: auth.currentUser?.uid || "guest_user",
-        songId: current?.id || lastVideoIdRef.current,
-        event: "play",
-        playDuration: 0,
-        songDuration: p.getDuration() || 0,
-        songMeta: {
-          title: current?.title || "",
-          artist: current?.artist || "",
-          language: current?.language || current?.lang || current?.genre || "",
-          genre: current?.genre || "",
-        }
-      });
-    } else {
-      p.pauseVideo();
-      stopProgressLoop();
-    }
-  }, [isPlaying]);
-
-  // MediaSession metadata + handlers
+  // MediaSession Metadata & Lock-screen integrations
   useEffect(() => {
     if (!current || !("mediaSession" in navigator)) return;
 
@@ -187,39 +141,30 @@ export default function CustomAudioPlayer() {
       ],
     });
 
-    navigator.mediaSession.setActionHandler("play", () => { if (!isPlaying) togglePlay(); });
-    navigator.mediaSession.setActionHandler("pause", () => { if (isPlaying) togglePlay(); });
-    navigator.mediaSession.setActionHandler("previoustrack", playPrevious);
-    navigator.mediaSession.setActionHandler("nexttrack", playNext);
+    navigator.mediaSession.setActionHandler("play", () => togglePlay());
+    navigator.mediaSession.setActionHandler("pause", () => togglePlay());
+    navigator.mediaSession.setActionHandler("previoustrack", () => playPrevious());
+    navigator.mediaSession.setActionHandler("nexttrack", () => playNext());
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+       if (audioRef.current && details.seekTime !== undefined) {
+         audioRef.current.currentTime = details.seekTime;
+       }
+    });
 
     return () => {
-      ["play","pause","previoustrack","nexttrack"].forEach(a => {
+      ["play","pause","previoustrack","nexttrack","seekto"].forEach(a => {
         try { navigator.mediaSession.setActionHandler(a, null); } catch(e) {}
       });
     };
-  }, [current, isPlaying]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopProgressLoop();
-      if (playerRef.current) { try { playerRef.current.destroy(); } catch(e) {} }
-    };
-  }, []);
+  }, [current]);
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: "-9999px",
-        width: 1,
-        height: 1,
-        overflow: "hidden",
-        opacity: 0,
-        pointerEvents: "none",
-      }}
+    <audio 
+      ref={audioRef} 
+      id="melopra-native-audio" 
+      preload="auto" 
+      crossOrigin="anonymous"
+      style={{ display: "none" }} 
     />
   );
 }

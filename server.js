@@ -454,6 +454,65 @@ app.get("/api/yt-related", async (req, res) => {
 });
 
 /* -----------------------------------------------------------
+ 🔉 Native Audio Stream Proxy
+    Provides background-playable chunked audio stream.
+----------------------------------------------------------- */
+const ytdl = require("@distube/ytdl-core");
+
+app.get("/api/stream", async (req, res) => {
+  try {
+    const id = req.query.id;
+    if (!id) return res.status(400).json({ error: "Missing ?id= parameter" });
+
+    const info = await ytdl.getInfo(id);
+    const audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio" });
+
+    if (!audioFormat) {
+      return res.status(404).json({ error: "No audio stream available" });
+    }
+
+    const contentLength = audioFormat.contentLength ? parseInt(audioFormat.contentLength, 10) : 0;
+    const mimeType = audioFormat.mimeType || "audio/webm";
+    const range = req.headers.range;
+
+    if (range && contentLength > 0) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : contentLength - 1;
+      const chunksize = (end - start) + 1;
+
+      res.writeHead(206, {
+        "Content-Range": `bytes ${start}-${end}/${contentLength}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunksize,
+        "Content-Type": mimeType
+      });
+
+      ytdl(id, {
+        format: audioFormat,
+        range: { start, end }
+      }).pipe(res);
+    } else {
+      if (contentLength > 0) {
+        res.writeHead(200, {
+          "Content-Length": contentLength,
+          "Accept-Ranges": "bytes",
+          "Content-Type": mimeType
+        });
+      } else {
+        res.writeHead(200, { "Content-Type": mimeType });
+      }
+      ytdl(id, { format: audioFormat }).pipe(res);
+    }
+  } catch (err) {
+    console.error("Stream Proxy Error:", err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to pipe audio stream." });
+    }
+  }
+});
+
+/* -----------------------------------------------------------
  🖼️  Artist Image Proxy
     Fetches Deezer artist images server-side so the browser
     never hits dzcdn.net directly (which blocks browser requests).
