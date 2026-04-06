@@ -465,7 +465,13 @@ app.get("/api/stream", async (req, res) => {
     if (!id) return res.status(400).json({ error: "Missing ?id= parameter" });
 
     const info = await ytdl.getInfo(id);
-    const audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio" });
+    
+    // Explicitly prefer MP4/M4A for iOS Safari compatibility. 
+    // WebM Opus throws native decode errors on many iOS versions.
+    let audioFormat = info.formats.find(f => f.container === 'mp4' && f.hasAudio && !f.hasVideo);
+    if (!audioFormat) {
+      audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio" });
+    }
 
     if (!audioFormat) {
       return res.status(404).json({ error: "No audio stream available" });
