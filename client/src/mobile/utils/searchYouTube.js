@@ -1,4 +1,5 @@
-const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
+const SERVER_URL = import.meta.env.VITE_SERVER_URL ||
+  (window.location.hostname === "localhost" ? "http://localhost:4000" : "https://melopra-production.up.railway.app");
 
 // ─── LRU Cache (max 50 entries, 10‑min TTL) ───────────────────────────────
 const CACHE_MAX = 50;
@@ -58,29 +59,35 @@ export async function searchYouTube(query) {
   const cached = getCache(cacheKey);
   if (cached) return cached;
 
-  const url =
-    `https://www.googleapis.com/youtube/v3/search` +
-    `?part=snippet&type=video&videoCategoryId=10` +
-    `&maxResults=5&q=${encodeURIComponent(query)}` +   // ← was 15, now 5
-    `&key=${API_KEY}`;
-
+  const url = `${SERVER_URL}/api/yt-search?q=${encodeURIComponent(query)}&limit=5`;
   const res = await fetch(url);
   const data = await res.json();
 
-  if (!data.items) return [];
+  if (!Array.isArray(data)) return [];
 
-  const filtered = data.items
-    .map((item) => ({
-      id: item.id.videoId,
-      title: item.snippet.title,
-      artist: item.snippet.channelTitle,
-      image: item.snippet.thumbnails.medium.url,
-      category: "YouTube",
-    }))
+  const filtered = data
     .filter((item) => isClean(item.title, item.artist))
     .sort((a, b) => scoreResult(b.title, b.artist) - scoreResult(a.title, a.artist))
     .slice(0, 3);
 
   setCache(cacheKey, filtered);
   return filtered;
+}
+
+export async function getRelatedSongs(videoId) {
+  if (!videoId) return [];
+  try {
+    const res = await fetch(`${SERVER_URL}/api/yt-related?id=${videoId}`);
+    if (!res.ok) return [];
+    
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .filter((item) => isClean(item.title, item.artist))
+      .slice(0, 10);
+  } catch (err) {
+    console.error("Failed to get related songs:", err);
+    return [];
+  }
 }

@@ -5,11 +5,43 @@ import { playItem, enqueue } from "./mobile/state/useNowPlaying";
 import { allItems } from "./mobile/data/allItems";
 import { useAuth } from "./contexts/AuthContext";
 import useLibraryController from "./hooks/useLibraryController";
+import { useEffect } from "react";
+import { useNowPlaying } from "./mobile/state/useNowPlaying";
+import { usePlayerStore } from "./stores/usePlayerStore";
+import { startPlayerSync, pushPlayerState } from "./services/playerSyncService";
 
 export default function App() {
   const isMobile = useIsMobile();
   const { currentUser } = useAuth();
   const library = useLibraryController({ currentUser });
+
+  const mobilePlayerState = useNowPlaying();
+  const desktopPlayerState = usePlayerStore();
+
+  useEffect(() => {
+    if (currentUser) {
+      startPlayerSync(currentUser);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser && isMobile) {
+      pushPlayerState(currentUser, { 
+        history: mobilePlayerState.history,
+        currentTrack: mobilePlayerState.current,
+        queue: mobilePlayerState.queue
+      });
+    }
+  }, [currentUser, isMobile, mobilePlayerState]);
+
+  useEffect(() => {
+    if (currentUser && !isMobile) {
+      pushPlayerState(currentUser, {
+        currentTrack: desktopPlayerState.currentTrack,
+        queue: desktopPlayerState.queue
+      });
+    }
+  }, [currentUser, isMobile, desktopPlayerState]);
 
   const actions = {
     play: (item) => {

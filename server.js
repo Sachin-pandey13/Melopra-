@@ -29,7 +29,7 @@ const recommendationsRoute = require("./server/routes/recommendations");
 const personalizedRoute    = require("./server/routes/personalized");
 const admin                = require("./server/firebaseAdmin");
 
-const { lyricsCache, deezerCache, cacheKey, TTL, getCacheStats } = require("./server/cache");
+const { lyricsCache, deezerCache, saavnCache, ytCache, cacheKey, TTL, getCacheStats } = require("./server/cache");
 const { rateLimitMiddleware, getQuotaStatus }                     = require("./server/quotaManager");
 const { inflightLyrics, inflightDeezer, getInflightStatus }       = require("./server/inflight");
 
@@ -337,6 +337,10 @@ app.get("/api/artist-search", async (req, res) => {
   const query = req.query.artist;
   if (!query) return res.json({ artists: [] });
 
+  const key = cacheKey("saavn", query);
+  const cached = saavnCache.get(key);
+  if (cached) return res.json({ artists: cached });
+
   try {
     const response = await axios.get(
       `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query.trim())}&_format=json&_marker=0&ctx=web6dot0`,
@@ -355,10 +359,74 @@ app.get("/api/artist-search", async (req, res) => {
       fans: 0,
     }));
 
+    saavnCache.set(key, artists, TTL.SAAVN);
     return res.json({ artists });
   } catch (err) {
     console.error("JioSaavn artist search error:", err.message);
     return res.json({ artists: [] });
+  }
+});
+
+/* -----------------------------------------------------------
+ 🎥 Zero-Quota YouTube Proxy via play-dl
+----------------------------------------------------------- */
+app.get("/api/yt-search", async (req, res) => {
+  const query = req.query.q;
+  if (!query) return res.status(400).json({ error: "Missing ?q= parameter" });
+
+  const limit = parseInt(req.query.limit) || 5;
+  const key = cacheKey("yt-search", query, limit);
+  const cached = ytCache.get(key);
+  
+  if (cached) return res.json(cached);
+
+  try {
+    const results = await play.search(query, {
+      source: { youtube: "video" },
+      limit: limit
+    });
+    
+    const mapped = results.map(v => ({
+      id: v.id,
+      title: v.title,
+      artist: v.channel?.name || "Unknown",
+      image: v.thumbnails?.[1]?.url || v.thumbnails?.[0]?.url || "",
+      category: "YouTube"
+    }));
+
+    ytCache.set(key, mapped, TTL.YT_SEARCH);
+    return res.json(mapped);
+  } catch (err) {
+    console.error("yt-search error:", err);
+    res.status(500).json({ error: "YouTube scrape failed" });
+  }
+});
+
+app.get("/api/yt-related", async (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "Missing ?id= parameter" });
+
+  const key = cacheKey("yt-related", id);
+  const cached = ytCache.get(key);
+  if (cached) return res.json(cached);
+
+  try {
+    const info = await play.video_info(id);
+    if (!info.related_videos) return res.json([]);
+
+    const mapped = info.related_videos.map(v => ({
+      id: v.id,
+      title: v.title,
+      artist: v.channel?.name || "Unknown",
+      image: v.thumbnails?.[1]?.url || v.thumbnails?.[0]?.url || "",
+      category: "YouTube"
+    }));
+
+    ytCache.set(key, mapped, TTL.YT_SEARCH);
+    return res.json(mapped);
+  } catch (err) {
+    console.error("yt-related error:", err);
+    res.status(500).json({ error: "Failed to grab related videos", message: err.message });
   }
 });
 
@@ -422,7 +490,7 @@ app.get("/proxy", async (req, res) => {
        Prevents play-dl from blocking the Node event loop
        under heavy multi-user load.
 ----------------------------------------------------------- */
-const MAX_CONCURRENT_STREAMS = 10;
+const MAX_CONCURRENT_STREAMS = 30;
 let   activeStreams           = 0;
 
 app.get("/api/stream", async (req, res) => {

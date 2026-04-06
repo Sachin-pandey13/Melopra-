@@ -15,6 +15,8 @@ import {
 } from "firebase/auth";
 
 import { auth, setUpRecaptcha } from "../firebase";
+import { clearPlayerState } from "../mobile/state/useNowPlaying";
+import { usePlayerStore } from "../stores/usePlayerStore";
 
 const AuthContext = createContext();
 
@@ -85,6 +87,8 @@ export function AuthProvider({ children }) {
   /* ---------------- LOGOUT ---------------- */
 
   function logout() {
+    clearPlayerState();
+    usePlayerStore.setState({ currentTrack: null, queue: [], isPlaying: false });
     return signOut(auth);
   }
 

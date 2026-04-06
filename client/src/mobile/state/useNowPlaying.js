@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { searchYouTube } from "../utils/searchYouTube";
+import { searchYouTube, getRelatedSongs } from "../utils/searchYouTube";
 
 /* ---------- CONSTANTS ---------- */
 const HISTORY_KEY = "melopra_recent_played";
@@ -158,6 +158,17 @@ export function clearQueue() {
   setState({ queue: [], queueSource: "manual" });
 }
 
+export function clearPlayerState() {
+  setState({
+    current: null,
+    queue: [],
+    history: [],
+    isPlaying: false,
+    queueSource: "manual"
+  });
+  localStorage.removeItem(HISTORY_KEY);
+}
+
 export function enqueue(item, source = "manual") {
   if (!item) return;
 
@@ -293,32 +304,33 @@ export function playNext() {
 /* ---------- SIMILARITY ENGINE ---------- */
 async function fetchSimilarityNext(currentTrack) {
   if (state.isSmartLoading) return;
-  
   setState({ isSmartLoading: true });
   
   try {
-     const artist = currentTrack.artist || "";
-     const title = currentTrack.title || "";
+     console.log(`🧠 Smart Play Next: Fetching God-Level YouTube similarity for "${currentTrack.title}"`);
      
-     // Detect genre/context from title/artist
-     let genreHint = "";
-     if (/punjabi|sidhu|aujla|shubh/i.test(`${artist} ${title}`)) genreHint = "punjabi";
-     else if (/hindi|arijit|shreya|romantic/i.test(`${artist} ${title}`)) genreHint = "hindi";
-     else genreHint = "latest hits";
+     // 1. Try passing the actual video ID for native YouTube-native recommendations
+     let results = [];
+     if (currentTrack.id) {
+       results = await getRelatedSongs(normalizeId(currentTrack.id));
+     }
 
-     // Heuristic: Search for "songs like [Title] by [Artist]" or "[Genre] songs like [Artist]"
-     const query = `${genreHint} official music videos similar to ${artist} ${title}`;
+     // 2. Fallback to existing search logic if related fails or no ID
+     if (!results || results.length === 0) {
+         const artist = currentTrack.artist || "";
+         const title = currentTrack.title || "";
+         let genreHint = "";
+         if (/punjabi|sidhu|aujla|shubh/i.test(`${artist} ${title}`)) genreHint = "punjabi";
+         else if (/hindi|arijit|shreya|romantic/i.test(`${artist} ${title}`)) genreHint = "hindi";
+         else genreHint = "latest hits";
+
+         const query = `${genreHint} official music videos similar to ${artist} ${title}`;
+         results = await searchYouTube(query, 6);
+     }
      
-     console.log(`🧠 Smart Play Next: Fetching similarity for "${title}" [${genreHint}]`);
-     
-     const results = await searchYouTube(query, 6);
-     
-     // Artist Diversity Filter: Remove current artist if possible, and keep original results
-     const filtered = results.filter(s => 
-       s.artist.toLowerCase() !== artist.toLowerCase()
-     );
-     
-     const finalNext = filtered.length > 0 ? filtered : results;
+     // Artist Diversity Filter (optional, but let YT algorithm decide primarily)
+     // finalNext just uses YouTube's related items
+     const finalNext = results;
 
      if (finalNext.length > 0) {
         const [next, ...rest] = finalNext;

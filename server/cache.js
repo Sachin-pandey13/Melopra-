@@ -90,6 +90,8 @@ const TTL = {
   FLOWCAST:        15 * 60 * 1000,      // 15 min  — YouTube channels
   RECOMMENDATIONS: 10 * 60 * 1000,      // 10 min  — ML results
   DETECT:          20 * 60 * 1000,      // 20 min  — Shazam detections
+  SAAVN:           30 * 60 * 1000,      // 30 min  — JioSaavn requests
+  YT_SEARCH:       30 * 60 * 1000,      // 30 min  — YouTube search results
 };
 
 const lyricsCache        = new TTLCache();
@@ -97,6 +99,8 @@ const deezerCache        = new TTLCache();
 const flowcastCache      = new TTLCache();
 const recommendCache     = new TTLCache();
 const detectCache        = new TTLCache();
+const saavnCache         = new TTLCache();
+const ytCache            = new TTLCache();
 
 // ─────────────────────────────────────────────────────────────
 // Helper: build a stable cache key (lowercased + normalized)
@@ -117,6 +121,8 @@ function getCacheStats() {
     flowcast:      flowcastCache.size,
     recommendations: recommendCache.size,
     detect:        detectCache.size,
+    saavn:         saavnCache.size,
+    ytSearch:      ytCache.size,
   };
 }
 
@@ -127,6 +133,8 @@ module.exports = {
   flowcastCache,
   recommendCache,
   detectCache,
+  saavnCache,
+  ytCache,
   cacheKey,
   getCacheStats,
 };
