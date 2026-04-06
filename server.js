@@ -22,6 +22,13 @@ const path        = require("path");
 const axios       = require("axios");
 const cheerio     = require("cheerio");
 const play        = require("play-dl");
+const { Innertube } = require("youtubei.js");
+
+let ytInner = null;
+Innertube.create().then(yta => {
+  ytInner = yta;
+  console.log("✅ youtubei.js initialized");
+}).catch(err => console.error("❌ youtubei.js init error:", err));
 
 // ── Melopra modules ──────────────────────────────────────────────────────────
 const flowcastRoutes       = require("./server/routes/flowcast");
@@ -381,16 +388,14 @@ app.get("/api/yt-search", async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    const results = await play.search(query, {
-      source: { youtube: "video" },
-      limit: limit
-    });
+    if (!ytInner) return res.status(503).json({ error: "YT Initializing" });
     
-    const mapped = results.map(v => ({
+    const results = await ytInner.search(query, { type: "video" });
+    const mapped = results.results.slice(0, limit).map(v => ({
       id: v.id,
-      title: v.title,
-      artist: v.channel?.name || "Unknown",
-      image: v.thumbnails?.[1]?.url || v.thumbnails?.[0]?.url || "",
+      title: v.title?.text || "Unknown",
+      artist: v.author?.name || "Unknown",
+      image: v.thumbnails?.[0]?.url || "",
       category: "YouTube"
     }));
 
@@ -411,16 +416,34 @@ app.get("/api/yt-related", async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    const info = await play.video_info(id);
-    if (!info.related_videos) return res.json([]);
+    if (!ytInner) return res.status(503).json({ error: "YT Initializing" });
+    
+    const info = await ytInner.getInfo(id);
+    const relatedVideos = info.watch_next_feed || [];
 
-    const mapped = info.related_videos.map(v => ({
-      id: v.id,
-      title: v.title,
-      artist: v.channel?.name || "Unknown",
-      image: v.thumbnails?.[1]?.url || v.thumbnails?.[0]?.url || "",
-      category: "YouTube"
-    }));
+    const mapped = relatedVideos.slice(0, 10).map(v => {
+      // Support standard CompactVideo from youtubei
+      if (v.id) {
+        return {
+          id: v.id,
+          title: v.title?.text || "Unknown",
+          artist: v.author?.name || v.short_view_count?.text || "Unknown",
+          image: v.thumbnails?.[0]?.url || "",
+          category: "YouTube"
+        };
+      }
+      // Support LockupView fallback which YouTube recently shifted to
+      if (v.content_id) {
+        return {
+          id: v.content_id,
+          title: v.metadata?.title?.text || "Unknown",
+          artist: v.metadata?.metadata?.metadata_rows?.[0]?.metadata_parts?.[0]?.text?.text || "Unknown",
+          image: v.content_image?.image?.[0]?.url || "",
+          category: "YouTube"
+        };
+      }
+      return null;
+    }).filter(v => !!v);
 
     ytCache.set(key, mapped, TTL.YT_SEARCH);
     return res.json(mapped);
