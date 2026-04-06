@@ -163,7 +163,6 @@ export default function CustomAudioPlayer() {
       ref={audioRef} 
       id="melopra-native-audio" 
       preload="auto" 
-      crossOrigin="anonymous"
       style={{ display: "none" }} 
     />
   );

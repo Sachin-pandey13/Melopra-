@@ -487,7 +487,7 @@ app.get("/api/stream", async (req, res) => {
       const end = parts[1] ? parseInt(parts[1], 10) : contentLength - 1;
       const chunksize = (end - start) + 1;
 
-      res.writeHead(206, {
+      res.status(206).set({
         "Content-Range": `bytes ${start}-${end}/${contentLength}`,
         "Accept-Ranges": "bytes",
         "Content-Length": chunksize,
@@ -500,13 +500,13 @@ app.get("/api/stream", async (req, res) => {
       }).pipe(res);
     } else {
       if (contentLength > 0) {
-        res.writeHead(200, {
+        res.status(200).set({
           "Content-Length": contentLength,
           "Accept-Ranges": "bytes",
           "Content-Type": mimeType
         });
       } else {
-        res.writeHead(200, { "Content-Type": mimeType });
+        res.status(200).set("Content-Type", mimeType);
       }
       ytdl(id, { format: audioFormat }).pipe(res);
     }
