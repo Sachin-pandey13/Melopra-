@@ -60,8 +60,21 @@ export default function CustomAudioPlayer() {
     };
 
     const onError = (e) => {
-      console.warn("Audio stream error, skipping:", e);
-      playNext();
+      const audio = e.target;
+      let errMsg = "Unknown Audio Error";
+      if (audio.error) {
+        switch (audio.error.code) {
+          case 1: errMsg = "MEDIA_ERR_ABORTED"; break;
+          case 2: errMsg = "MEDIA_ERR_NETWORK"; break;
+          case 3: errMsg = "MEDIA_ERR_DECODE"; break;
+          case 4: errMsg = "MEDIA_ERR_SRC_NOT_SUPPORTED"; break;
+          default: errMsg = "MEDIA_ERR_UNKNOWN(" + audio.error.code + ")";
+        }
+      }
+      console.warn("Audio stream error:", errMsg, audio.error);
+      alert(`Audio Playback Error: ${errMsg}. Skipping paused to prevent loop.`);
+      // Temporarily disabled playNext() to stop the infinite loop during debugging
+      // playNext();
     };
 
     audio.addEventListener("timeupdate", onTimeUpdate);
