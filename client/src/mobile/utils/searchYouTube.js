@@ -1,5 +1,5 @@
-const SERVER_URL = import.meta.env.VITE_SERVER_URL ||
-  (window.location.hostname === "localhost" ? "http://localhost:4000" : "https://melopra-production.up.railway.app");
+const SERVER_URL = import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "localhost" ? "http://localhost:4000" : "https://melopra-backend.onrender.com");
 
 // ─── LRU Cache (max 50 entries, 10‑min TTL) ───────────────────────────────
 const CACHE_MAX = 50;
