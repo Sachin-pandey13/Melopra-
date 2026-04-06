@@ -3,9 +3,8 @@ import { fetchTracksFromPlaylist } from "../../utils/FirestorePlaylists";
 
 function getProxiedImage(url) {
   if (!url) return "";
-  if (url.includes("wsrv.nl") || !url.includes("dzcdn.net")) return url;
-  const cleanUrl = url.replace(/^https?:\/\//, "");
-  return `https://images.weserv.nl/?url=${cleanUrl}&w=200&h=200&fit=cover`;
+  // dzcdn.net CDN is fully public — return as-is, no proxy needed
+  return url;
 }
 
 function seededRandom(seed) {

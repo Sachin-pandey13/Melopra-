@@ -1,38 +1,44 @@
 import { useState, useEffect } from "react";
 
-const API = "https://melopra-backend.onrender.com";
+const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Ccircle cx='28' cy='28' r='28' fill='%23333'/%3E%3Ctext x='28' y='36' text-anchor='middle' font-size='28' fill='%23888'%3E🎤%3C/text%3E%3C/svg%3E";
 
-/* ---------- Deezer Artist Search ---------- */
+// In dev, Vite proxies /api/* → localhost:4000 (see vite.config.mjs)
+// In production, VITE_API_URL is set to the deployed backend URL
+const BASE_URL = import.meta.env.VITE_API_URL || "";
+
+/* ---------- Deezer Artist Search via backend proxy (avoids CORS) ---------- */
 async function searchDeezerArtists(query) {
   if (!query || query.trim().length < 2) return [];
 
   try {
-    const url = `${API}/api/deezer-artist?artist=${encodeURIComponent(query)}`;
-    const res = await fetch(url);
+    // Use the backend /api/deezer-artist proxy — direct browser calls to
+    // api.deezer.com are blocked by CORS on mobile/production.
+    const res = await fetch(
+      `${BASE_URL}/api/deezer-artist?artist=${encodeURIComponent(query.trim())}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    if (!data.artists) return [];
+    if (!data.artists || !data.artists.length) return [];
 
-    return data.artists.map((artist) => {
-      return {
-        id: `deezer-${artist.id}`,
-        name: artist.name,
-        image: artist.image || "",
-        channelId: `deezer-${artist.id}`,
-        fans: artist.fans || 0,
-      };
-    });
+    return data.artists.map((artist) => ({
+      id: `deezer-${artist.id}`,
+      name: artist.name,
+      image: artist.image || "",
+      channelId: `deezer-${artist.id}`,
+      fans: artist.fans || 0,
+    }));
   } catch (err) {
-    console.warn("Deezer search failed:", err);
+    console.warn("Artist search failed:", err);
     return [];
   }
 }
 
+// Deezer CDN images (dzcdn.net) are public — no proxy needed
 function getProxiedImage(url) {
-  if (!url) return "";
-  if (url.includes("wsrv.nl") || !url.includes("dzcdn.net")) return url;
-  const cleanUrl = url.replace(/^https?:\/\//, "");
-  return `https://images.weserv.nl/?url=${cleanUrl}&w=200&h=200&fit=cover&mask=circle`;
+  if (!url) return PLACEHOLDER_IMG;
+  return url;
 }
 
 export default function ArtistSearchPage({ onFollow, isFollowing, onClose }) {
@@ -171,6 +177,7 @@ export default function ArtistSearchPage({ onFollow, isFollowing, onClose }) {
                 <img
                   src={getProxiedImage(artist.image)}
                   alt={artist.name}
+                  onError={(e) => { e.currentTarget.src = PLACEHOLDER_IMG; }}
                   style={{
                     width: 56,
                     height: 56,
@@ -180,7 +187,6 @@ export default function ArtistSearchPage({ onFollow, isFollowing, onClose }) {
                     border: "2px solid rgba(255,255,255,0.1)",
                   }}
                   referrerPolicy="no-referrer"
-                  crossOrigin="anonymous"
                 />
               ) : (
                 <div

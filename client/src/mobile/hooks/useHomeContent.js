@@ -4,13 +4,8 @@ import { playItem, replaceQueue } from "../state/useNowPlaying";
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
-// Browser ORB policy is strict on mobile; we must proxy dzcdn images through weserv
-const proxy = (url) => {
-  if (!url) return "";
-  if (url.includes("wsrv.nl") || !url.includes("dzcdn.net")) return url;
-  const cleanUrl = url.replace(/^https?:\/\//, "");
-  return `https://images.weserv.nl/?url=${cleanUrl}&w=400&h=400&fit=cover`;
-};
+// dzcdn.net CDN is publicly accessible — no proxy needed
+const proxy = (url) => url || "";
 
 /**
  * Hook to manage complex home screen data needs:

@@ -9,18 +9,15 @@ import PlaylistCollage from "../components/PlaylistCollage";
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
+const ARTIST_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Ccircle cx='40' cy='40' r='40' fill='%23333'/%3E%3Ctext x='40' y='52' text-anchor='middle' font-size='36' fill='%23888'%3E🎤%3C/text%3E%3C/svg%3E";
+
 /**
- * Helper to proxy Deezer images if needed
+ * Return artist image URL directly — Deezer CDN is publicly accessible.
+ * wsrv.nl is unreliable and returns 404 for many dzcdn.net URLs.
  */
 function getProxiedImage(url) {
-  if (!url) return "";
-  // images.weserv.nl is great for proxying and resizing CDN images
-  if (url.includes("wsrv.nl") || !url.includes("dzcdn.net")) {
-    return url;
-  }
-  // Strip https:// if present for weserv
-  const cleanUrl = url.replace(/^https?:\/\//, "");
-  return `https://images.weserv.nl/?url=${cleanUrl}&w=200&h=200&fit=cover&mask=circle`;
+  if (!url) return ARTIST_PLACEHOLDER;
+  return url;
 }
 
 /* ---------- Album fetcher (YT search by artist) ---------- */
@@ -551,13 +548,13 @@ function ArtistCard({ artist, onToggleFollow }) {
           <img
             src={getProxiedImage(artist.image)}
             alt={artist.name}
+            onError={(e) => { e.currentTarget.src = ARTIST_PLACEHOLDER; }}
             style={{
               width: "100%",
               height: "100%",
               objectFit: "cover",
             }}
             referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
           />
         ) : (
           <span style={{ fontSize: 28 }}>🎤</span>

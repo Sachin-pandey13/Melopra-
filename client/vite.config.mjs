@@ -91,6 +91,19 @@ export default defineConfig(({ mode }) => {
         host: domain,
         clientPort: domain === "localhost" ? 5173 : 443,
       },
+      proxy: {
+        // Forward all /api requests to the Express backend during development
+        "/api": {
+          target: "http://localhost:4000",
+          changeOrigin: true,
+          secure: false,
+        },
+        "/proxy": {
+          target: "http://localhost:4000",
+          changeOrigin: true,
+          secure: false,
+        },
+      },
     },
 
     preview: {
