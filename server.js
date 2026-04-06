@@ -373,7 +373,7 @@ app.get(
           .map(a => ({
             id:    a.id,
             name:  a.name,
-            image: a.picture_medium || "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png",
+            image: `https://api.deezer.com/artist/${a.id}/image`,
             fans:  a.nb_fan || 0,
           }))
           .slice(0, 12);
@@ -388,7 +388,7 @@ app.get(
             .map(a => ({
               id:    a.id,
               name:  a.name,
-              image: a.picture_medium || "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png",
+              image: `https://api.deezer.com/artist/${a.id}/image`,
               fans:  a.nb_fan || 0,
             }))
             .slice(0, 12);
@@ -406,8 +406,8 @@ app.get(
       console.error("Deezer artist error:", err.message);
       return res.json({
         artists: [
-          { id: "fallback1", name: "Eminem",      image: "https://e-cdns-images.dzcdn.net/images/artist/0e1d6f8c2f1e0a4d2d3b6a2e0e2a7a2/500x500-000000-80-0-0.jpg" },
-          { id: "fallback2", name: "Arijit Singh", image: "https://e-cdns-images.dzcdn.net/images/artist/6a7c55e9c96c6c46c1d43c2dba4e4c0c/500x500-000000-80-0-0.jpg" },
+          { id: "13", name: "Eminem", image: "https://api.deezer.com/artist/13/image" },
+          { id: "1191615", name: "Arijit Singh", image: "https://api.deezer.com/artist/1191615/image" },
         ],
       });
     }
