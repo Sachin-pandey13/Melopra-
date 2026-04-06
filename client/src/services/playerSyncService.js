@@ -1,11 +1,10 @@
-import { doc, getDoc, setDoc, onSnapshot, getFirestore } from "firebase/firestore";
-import app from "../firebase";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { db } from "../firebase";
 import { usePlayerStore } from "../stores/usePlayerStore";
 
 // Get direct state setter for mobile 
 let mobileSetState = null;
 
-const db = getFirestore(app);
 let unsubscribeSnapshot = null;
 let debounceTimer = null;
 let isHydrating = false; 
