@@ -329,90 +329,42 @@ app.get("/api/play-song", async (req, res) => {
 });
 
 /* -----------------------------------------------------------
- 🎨 Deezer Artist Lookup
-    ✅ TTL cache (30 min) + in-flight dedup + rate limit
+ 🎤 Artist Search (YouTube Data API fallback for blocked Deezer)
+    Replaces Deezer search due to severe CDN/Cloudflare blocks
+    on data center IPs (Render/AWS).
 ----------------------------------------------------------- */
-app.get(
-  "/api/deezer-artist",
-  rateLimitMiddleware("deezer"),
-  async (req, res) => {
-    try {
-      let { artist = "", lang = "" } = req.query;
-      artist = artist.trim();
+app.get("/api/artist-search", async (req, res) => {
+  const query = req.query.artist;
+  if (!query) return res.json({ artists: [] });
 
-      const seeds = {
-        english: "eminem",
-        hindi:   "arijit singh",
-        punjabi: "karan aujla",
-        tamil:   "anirudh",
-        telugu:  "sid sriram",
-      };
+  let apiKey = process.env.VITE_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
+  if (apiKey) apiKey = apiKey.trim();
 
-      const key_lang = (lang || "english").toLowerCase();
-      if (!artist) artist = seeds[key_lang] || "eminem";
-
-      const key = cacheKey("deezer", artist);
-
-      // ── 1. Cache hit ──────────────────────────────────────────
-      const cached = deezerCache.get(key);
-      if (cached) {
-        console.log(`[CACHE HIT] deezer: ${artist}`);
-        res.setHeader("X-Cache", "HIT");
-        return res.json(cached);
-      }
-
-      // ── 2. In-flight dedup ────────────────────────────────────
-      const payload = await inflightDeezer.dedupe(key, async () => {
-        const url = `https://api.deezer.com/search/artist?q=${encodeURIComponent(artist)}`;
-        const response = await axios.get(url, {
-          timeout: 5000,
-          headers: { "User-Agent": "Mozilla/5.0" },
-        });
-
-        let artists = (response.data?.data || [])
-          .map(a => ({
-            id:    a.id,
-            name:  a.name,
-            image: `/api/artist-image/${a.id}`,
-            fans:  a.nb_fan || 0,
-          }))
-          .slice(0, 12);
-
-        if (!artists.length) {
-          const fallback = seeds[key_lang] || "eminem";
-          const retry    = await axios.get(
-            `https://api.deezer.com/search/artist?q=${encodeURIComponent(fallback)}`,
-            { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
-          );
-          artists = (retry.data?.data || [])
-            .map(a => ({
-              id:    a.id,
-              name:  a.name,
-              image: `/api/artist-image/${a.id}`,
-              fans:  a.nb_fan || 0,
-            }))
-            .slice(0, 12);
-        }
-
-        return { artists };
-      });
-
-      // ── 3. Cache + respond ────────────────────────────────────
-      deezerCache.set(key, payload, TTL.DEEZER_ARTIST);
-      res.setHeader("X-Cache", "MISS");
-      return res.json(payload);
-
-    } catch (err) {
-      console.error("Deezer artist error:", err.message);
-      return res.json({
-        artists: [
-          { id: "13", name: "Eminem", image: "/api/artist-image/13" },
-          { id: "1191615", name: "Arijit Singh", image: "/api/artist-image/1191615" },
-        ],
-      });
-    }
+  if (!apiKey) {
+    return res.status(500).json({ error: "YOUTUBE_API_KEY missing on backend" });
   }
-);
+
+  try {
+    const q = encodeURIComponent(`${query.trim()} official channel`);
+    const ytRes = await axios.get(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${q}&type=channel&maxResults=12&key=${apiKey}`,
+      { timeout: 8000 }
+    );
+
+    const items = ytRes.data?.items || [];
+    const artists = items.map((item) => ({
+      id: `youtube-${item.snippet.channelId}`,
+      name: item.snippet.channelTitle.replace(" - Topic", "").replace("Official", "").replace("VEVO", "").trim(),
+      image: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url || "",
+      fans: 0,
+    }));
+
+    return res.json({ artists });
+  } catch (err) {
+    console.error("YouTube artist search error:", err.message);
+    return res.json({ artists: [] });
+  }
+});
 
 /* -----------------------------------------------------------
  🖼️  Artist Image Proxy

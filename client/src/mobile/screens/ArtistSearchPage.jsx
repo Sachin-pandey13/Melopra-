@@ -6,56 +6,28 @@ const PLACEHOLDER_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000
 // to the Render backend — so we always use relative paths.
 const BASE_URL = "";
 
-/* ---------- Deezer Artist Search via JSONP (Bypasses Backend/CORS) ---------- */
-function searchDeezerArtists(query) {
-  return new Promise((resolve) => {
-    if (!query || query.trim().length < 2) return resolve([]);
+/* ---------- Robust Artist Search (via Backend) ---------- */
+async function searchArtists(query) {
+  if (!query || query.trim().length < 2) return [];
 
-    const callbackName = 'deezer_cb_' + Math.round(1000000 * Math.random());
+  try {
+    const res = await fetch(
+      `${BASE_URL}/api/artist-search?artist=${encodeURIComponent(query.trim())}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) throw new Error(`Backend API returned ${res.status}`);
     
-    // Setup JSONP callback
-    window[callbackName] = function(data) {
-      cleanup();
-      if (!data || !data.data || !data.data.length) return resolve([]);
+    const data = await res.json();
+    if (!data.artists || !data.artists.length) return [];
 
-      // Map results
-      const results = data.data.map((artist) => ({
-        id: `deezer-${artist.id}`,
-        name: artist.name,
-        // Route image through weserv to bypass Deezer CDN browser blocks
-        image: `https://images.weserv.nl/?url=api.deezer.com/artist/${artist.id}/image&default=https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png`,
-        channelId: `deezer-${artist.id}`,
-        fans: artist.nb_fan || 0,
-      }));
-      resolve(results);
-    };
-
-    const script = document.createElement('script');
-    script.src = `https://api.deezer.com/search/artist?q=${encodeURIComponent(query.trim())}&output=jsonp&callback=${callbackName}`;
-    script.referrerPolicy = "no-referrer"; // Hide origin from Cloudflare
-    
-    // Timeout or error
-    script.onerror = () => {
-      cleanup();
-      resolve([]);
-    };
-    
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve([]);
-    }, 8000);
-
-    function cleanup() {
-      clearTimeout(timeout);
-      if (window[callbackName]) delete window[callbackName];
-      if (document.body.contains(script)) document.body.removeChild(script);
-    }
-
-    document.body.appendChild(script);
-  });
+    return data.artists;
+  } catch (err) {
+    console.warn("Artist search failed:", err);
+    return [];
+  }
 }
 
-// Images are pre-proxied via weserv above, so we just return the url
+// YouTube images are unblocked natively
 function getProxiedImage(url) {
   if (!url) return PLACEHOLDER_IMG;
   return url;
@@ -74,7 +46,7 @@ export default function ArtistSearchPage({ onFollow, isFollowing, onClose }) {
 
     const timer = setTimeout(async () => {
       setLoading(true);
-      const artists = await searchDeezerArtists(query);
+      const artists = await searchArtists(query);
       setResults(artists);
       setLoading(false);
     }, 350);
