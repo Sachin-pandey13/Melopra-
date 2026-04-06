@@ -329,39 +329,35 @@ app.get("/api/play-song", async (req, res) => {
 });
 
 /* -----------------------------------------------------------
- 🎤 Artist Search (YouTube Data API fallback for blocked Deezer)
-    Replaces Deezer search due to severe CDN/Cloudflare blocks
-    on data center IPs (Render/AWS).
+ 🎤 Keyless Artist Search (JioSaavn Autocomplete Proxy)
+    Replaces Deezer Data (blocked) and YouTube Data (limited quota).
+    Returns fast, global, and highly accurate artist objects.
 ----------------------------------------------------------- */
 app.get("/api/artist-search", async (req, res) => {
   const query = req.query.artist;
   if (!query) return res.json({ artists: [] });
 
-  let apiKey = process.env.VITE_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
-  if (apiKey) apiKey = apiKey.trim();
-
-  if (!apiKey) {
-    return res.status(500).json({ error: "YOUTUBE_API_KEY missing on backend" });
-  }
-
   try {
-    const q = encodeURIComponent(`${query.trim()} official channel`);
-    const ytRes = await axios.get(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${q}&type=channel&maxResults=12&key=${apiKey}`,
-      { timeout: 8000 }
+    const response = await axios.get(
+      `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query.trim())}&_format=json&_marker=0&ctx=web6dot0`,
+      {
+        timeout: 5000,
+        headers: { "User-Agent": "Mozilla/5.0" }
+      }
     );
 
-    const items = ytRes.data?.items || [];
-    const artists = items.map((item) => ({
-      id: `youtube-${item.snippet.channelId}`,
-      name: item.snippet.channelTitle.replace(" - Topic", "").replace("Official", "").replace("VEVO", "").trim(),
-      image: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url || "",
+    const items = response.data?.artists?.data || [];
+    const artists = items.map((artist) => ({
+      id: `saavn-${artist.id}`, // Maintain uniform prefix style
+      name: artist.title,
+      // JioSaavn compresses images heavily, swap 50x50 with 150x150
+      image: (artist.image || "").replace("50x50", "150x150"),
       fans: 0,
     }));
 
     return res.json({ artists });
   } catch (err) {
-    console.error("YouTube artist search error:", err.message);
+    console.error("JioSaavn artist search error:", err.message);
     return res.json({ artists: [] });
   }
 });

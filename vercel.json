@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://melopra-backend.onrender.com/api/:path*"
+    },
+    {
+      "source": "/proxy",
+      "destination": "https://melopra-backend.onrender.com/proxy"
+    }
+  ]
+}
