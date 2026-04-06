@@ -1,0 +1,1 @@
+﻿CASE SENSITIVITY ISSUE: ../utils/spotifyAPI in src\components\TrackSearch.jsx
