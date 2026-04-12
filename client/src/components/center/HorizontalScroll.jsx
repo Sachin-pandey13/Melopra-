@@ -38,7 +38,7 @@ const HorizontalScroll = ({ title, items = [], onPlay }) => {
       {/* Scrollable Row */}
       <div
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth snap-x"
+        className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth"
       >
         {items.length > 0 ? (
           items.map((item, index) => {
@@ -48,7 +48,7 @@ const HorizontalScroll = ({ title, items = [], onPlay }) => {
             return (
               <div
                 key={key}
-                className="flex-none w-[180px] md:w-[200px] cursor-pointer snap-start"
+                className="flex-none w-[180px] md:w-[200px] cursor-pointer"
                 onClick={() => onPlay?.(item)}
               >
                 <div className="rounded-xl overflow-hidden relative group">

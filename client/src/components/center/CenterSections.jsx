@@ -69,37 +69,48 @@ const withScopedId = (items = [], scope) =>
 
     const loadTrending = async () => {
       try {
-        const allItems = [];
+        const fetchPromises = [];
 
         for (const lang of langsToQuery) {
           const regions = languageToRegions[lang] || ["US"];
           for (const region of regions) {
-            try {
-              const body = await fetchForRegion(region);
-              if (body?.items) {
-                body.items.forEach((it) => {
-                  const vid = it.id;
-                  const snippet = it.snippet || {};
-                  const stats = it.statistics || {};
-                  allItems.push({
-                    id: vid,
-                    title: snippet.title,
-                    artist: snippet.channelTitle,
-                    image:
-                      snippet.thumbnails?.high?.url ||
-                      snippet.thumbnails?.medium?.url ||
-                      "",
-                    audio: `https://www.youtube.com/watch?v=${vid}`,
-                    category: "YouTube",
-                    viewCount: Number(stats.viewCount || 0),
-                  });
-                });
-              }
-            } catch (e) {
-              console.warn("Region fetch failed:", region, e);
-            }
+            fetchPromises.push(
+              fetchForRegion(region)
+                .then((body) => {
+                  const items = [];
+                  if (body?.items) {
+                    body.items.forEach((it) => {
+                      const vid = it.id;
+                      const snippet = it.snippet || {};
+                      const stats = it.statistics || {};
+                      items.push({
+                        id: vid,
+                        title: snippet.title,
+                        artist: snippet.channelTitle,
+                        image:
+                          snippet.thumbnails?.high?.url ||
+                          snippet.thumbnails?.medium?.url ||
+                          "",
+                        audio: `https://www.youtube.com/watch?v=${vid}`,
+                        category: "YouTube",
+                        viewCount: Number(stats.viewCount || 0),
+                      });
+                    });
+                  }
+                  return items;
+                })
+                .catch((e) => {
+                  console.warn("Region fetch failed:", region, e);
+                  return [];
+                })
+            );
           }
         }
+
+        const resultsArray = await Promise.all(fetchPromises);
+        if (cancelled) return;
+
+        const allItems = resultsArray.flat();
 
         if (cancelled) return;
 
@@ -188,59 +199,61 @@ lastFetchRef.current = Date.now();
   }
 
   const fetchInterests = async () => {
-    const grouped = [];
-
-    
     const cache = JSON.parse(localStorage.getItem("melopra_interest_cache") || "{}");
 
-    for (const [artist] of entries) {
+    const fetchPromises = entries.map(async ([artist]) => {
       const cleanArtist = artist.toLowerCase().trim();
 
-    
       if (cache[cleanArtist]) {
-        grouped.push(cache[cleanArtist]);
-        continue;
+        return cache[cleanArtist];
       }
 
       const query = `${cleanArtist} official audio`;
       logAPI("INTEREST_FETCH", query); 
 
-      
-      const data = await yt.fetchYT("search", {
-        part: "snippet",
-        q: query,
-        type: "video",
-        maxResults: 5,
-      });
+      try {
+        const data = await yt.fetchYT("search", {
+          part: "snippet",
+          q: query,
+          type: "video",
+          maxResults: 5,
+        });
 
-      const songs = (data.items || []).map((item) => {
-        const vid = item.id?.videoId || item.id;
+        const songs = (data.items || []).map((item) => {
+          const vid = item.id?.videoId || item.id;
 
-        return {
-          id: vid,
-          title: item.snippet?.title || "Unknown Title",
-          artist: item.snippet?.channelTitle || cleanArtist,
-          image:
-            item.snippet?.thumbnails?.high?.url ||
-            item.snippet?.thumbnails?.medium?.url ||
-            item.snippet?.thumbnails?.default?.url ||
-            "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png",
+          return {
+            id: vid,
+            title: item.snippet?.title || "Unknown Title",
+            artist: item.snippet?.channelTitle || cleanArtist,
+            image:
+              item.snippet?.thumbnails?.high?.url ||
+              item.snippet?.thumbnails?.medium?.url ||
+              item.snippet?.thumbnails?.default?.url ||
+              "https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png",
+            audio: `https://www.youtube.com/watch?v=${vid}`,
+            video: `https://www.youtube.com/embed/${vid}?autoplay=1`,
+            category: "YouTube",
+            channelId: item.snippet?.channelId || null,
+          };
+        });
 
-          audio: `https://www.youtube.com/watch?v=${vid}`,
-          video: `https://www.youtube.com/embed/${vid}?autoplay=1`,
+        const resultObj = { artist: cleanArtist, songs };
+        if (songs.length) {
+          // Mutating shared cache reference
+          cache[cleanArtist] = resultObj;
+        }
+        return songs.length ? resultObj : null;
+      } catch (err) {
+        console.warn("Interest fetch failed", err);
+        return null;
+      }
+    });
 
-          category: "YouTube",
-          channelId: item.snippet?.channelId || null,
-        };
-      });
+    const results = await Promise.all(fetchPromises);
+    const grouped = results.filter(Boolean);
 
-      if (songs.length) grouped.push({ artist: cleanArtist, songs });
-
-      
-      cache[cleanArtist] = { artist: cleanArtist, songs };
-      localStorage.setItem("melopra_interest_cache", JSON.stringify(cache));
-    }
-
+    localStorage.setItem("melopra_interest_cache", JSON.stringify(cache));
     setInterests(grouped);
   };
 

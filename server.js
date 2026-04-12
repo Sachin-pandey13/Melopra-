@@ -456,15 +456,43 @@ app.get("/api/yt-related", async (req, res) => {
 /* -----------------------------------------------------------
  🔉 Native Audio Stream Proxy
     Provides background-playable chunked audio stream.
+    ✅ Concurrency semaphore — max 30 parallel streams
+    ✅ LRU Cache for ytdl.getInfo to decrease latency tightly
 ----------------------------------------------------------- */
 const ytdl = require("@distube/ytdl-core");
 
-app.get("/api/stream", async (req, res) => {
-  try {
-    const id = req.query.id;
-    if (!id) return res.status(400).json({ error: "Missing ?id= parameter" });
+const MAX_CONCURRENT_STREAMS = 30;
+let   activeStreams           = 0;
 
-    const info = await ytdl.getInfo(id);
+const ytdlInfoCache = new Map();
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+app.get("/api/stream", async (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ error: "Missing ?id= parameter" });
+
+  // ── Concurrency guard ──────────────────────────────────────
+  if (activeStreams >= MAX_CONCURRENT_STREAMS) {
+    console.warn(`[STREAM] Concurrency limit reached (${activeStreams}/${MAX_CONCURRENT_STREAMS})`);
+    return res.status(503).json({
+      error:   "STREAM_BUSY",
+      message: "Server is at maximum stream capacity. Please retry in a moment.",
+    });
+  }
+
+  activeStreams++;
+  const releaseSlot = () => { activeStreams = Math.max(0, activeStreams - 1); };
+  res.on("finish", releaseSlot);
+  res.on("close",  releaseSlot);
+  res.on("error",  releaseSlot);
+
+  try {
+    let info = ytdlInfoCache.get(id);
+    if (!info || info.expiresAt < Date.now()) {
+      const liveInfo = await ytdl.getInfo(id);
+      info = { formats: liveInfo.formats, expiresAt: Date.now() + CACHE_TTL_MS };
+      ytdlInfoCache.set(id, info);
+    }
     
     // Explicitly prefer MP4/M4A for iOS Safari compatibility. 
     // WebM Opus throws native decode errors on many iOS versions.
@@ -572,50 +600,7 @@ app.get("/proxy", async (req, res) => {
   }
 });
 
-/* -----------------------------------------------------------
- 🎧 Stream YouTube Audio
-    ✅ Concurrency semaphore — max 10 parallel streams
-       Prevents play-dl from blocking the Node event loop
-       under heavy multi-user load.
------------------------------------------------------------ */
-const MAX_CONCURRENT_STREAMS = 30;
-let   activeStreams           = 0;
 
-app.get("/api/stream", async (req, res) => {
-  const videoId = req.query.id;
-  if (!videoId) return res.status(400).send("Missing YouTube ID");
-
-  // ── Concurrency guard ──────────────────────────────────────
-  if (activeStreams >= MAX_CONCURRENT_STREAMS) {
-    console.warn(`[STREAM] Concurrency limit reached (${activeStreams}/${MAX_CONCURRENT_STREAMS})`);
-    return res.status(503).json({
-      error:   "STREAM_BUSY",
-      message: "Server is at maximum stream capacity. Please retry in a moment.",
-    });
-  }
-
-  activeStreams++;
-
-  // Clean up counter when response finishes (success, error, or client disconnect)
-  const releaseSlot = () => { activeStreams = Math.max(0, activeStreams - 1); };
-  res.on("finish", releaseSlot);
-  res.on("close",  releaseSlot);
-  res.on("error",  releaseSlot);
-
-  try {
-    const streamUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const stream    = await play.stream(streamUrl, { quality: 2 });
-
-    res.setHeader("Content-Type",  stream.type === "webm/opus" ? "audio/webm" : "audio/mpeg");
-    res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Cache-Control", "public, max-age=3600");
-
-    stream.stream.pipe(res);
-  } catch (err) {
-    console.error("Stream proxy error using play-dl:", err.message);
-    if (!res.headersSent) res.status(500).send("Stream proxy failed: " + err.message);
-  }
-});
 
 /* -----------------------------------------------------------
  🚀 Start
