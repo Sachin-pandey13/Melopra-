@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import LoginModal from "../../components/LoginModal";
 import useFirestoreProfileImage from "../../hooks/useFirestoreProfileImage";
@@ -22,7 +22,24 @@ export default function MobileTopBar({
   const { isInstallable, promptInstall } = usePWAInstall();
 
   const fileInputRef = useRef(null);
+  const menuRef = useRef(null);
   const profileFromFirestore = useFirestoreProfileImage(currentUser?.uid);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [showUserMenu]);
 
   const updateProfileImage = async (file) => {
     if (!file || !currentUser?.uid) return;
@@ -100,7 +117,7 @@ export default function MobileTopBar({
 
         {/* 👤 AUTH BUTTON */}
         {currentUser ? (
-          <div style={{ position: "relative" }}>
+          <div ref={menuRef} style={{ position: "relative" }}>
             <button
               onClick={() => setShowUserMenu((v) => !v)}
               style={{
@@ -191,9 +208,11 @@ export default function MobileTopBar({
                   {uploading ? "Uploading..." : "Upload Profile Picture"}
                 </label>
                 <button
-                  onClick={() => {
-                    logout();
+                  onPointerDown={(e) => {
+                    // Fire immediately upon touch/click down
+                    e.stopPropagation();
                     setShowUserMenu(false);
+                    logout();
                   }}
                   style={{
                     width: "100%",
@@ -231,18 +250,6 @@ export default function MobileTopBar({
           </button>
         )}
       </div>
-
-      {/* Close user menu on outside click */}
-      {showUserMenu && (
-        <div
-          onClick={() => setShowUserMenu(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 20, // Must be lower than topbar's z-30 otherwise it blocks clicks
-          }}
-        />
-      )}
 
       {/* Global PWA Install Banner/Button (only shows if installation is pending) */}
       {isInstallable && (

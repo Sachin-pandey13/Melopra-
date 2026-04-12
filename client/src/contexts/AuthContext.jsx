@@ -87,8 +87,12 @@ export function AuthProvider({ children }) {
   /* ---------------- LOGOUT ---------------- */
 
   function logout() {
-    clearPlayerState();
-    usePlayerStore.setState({ currentTrack: null, queue: [], isPlaying: false });
+    try {
+      clearPlayerState();
+      usePlayerStore.setState({ currentTrack: null, queue: [], isPlaying: false });
+    } catch (err) {
+      console.warn("Failed to clear some player states during logout", err);
+    }
     return signOut(auth);
   }
 
