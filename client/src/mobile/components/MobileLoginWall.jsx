@@ -44,20 +44,26 @@ export default function MobileLoginWall({ onClose, onSuccess }) {
         setError("Email already in use. Try logging in.");
       else if (msg.includes("weak-password"))
         setError("Password must be at least 6 characters.");
-      else setError("Something went wrong. Please try again.");
+      else setError(`Error: ${msg.replace("auth/", "")}`);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogle = async () => {
+    // 1. Trigger the popup synchronously *before* React state updates.
+    // This prevents mobile browsers from killing the popup for lacking "user gesture".
+    const authPromise = loginWithGoogle();
+
     setError("");
     setLoading(true);
     try {
-      await loginWithGoogle();
+      await authPromise;
       onSuccess?.();
     } catch (err) {
-      setError("Google sign-in failed. Please try again.");
+      console.error("Google Auth Error:", err);
+      const msg = err?.code || err?.message || "Unknown error";
+      setError(`Google sign-in failed: ${msg.replace("auth/", "")}`);
     } finally {
       setLoading(false);
     }

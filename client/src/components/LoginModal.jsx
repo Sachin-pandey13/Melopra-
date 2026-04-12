@@ -64,14 +64,19 @@ const LoginModal = ({ onClose }) => {
   };
 
   const handleGoogleLogin = async () => {
+    // 1. Synchronous popup execution to preserve trusted user gesture
+    const authPromise = loginWithGoogle();
+    
     setError("");
     setLoading(true);
 
     try {
-      await loginWithGoogle();
+      await authPromise;
       onClose();
-    } catch {
-      setError("Google login failed.");
+    } catch (err) {
+      console.error("Google login error", err);
+      const msg = err?.code || err?.message || "Unknown error";
+      setError(`Google login failed: ${msg.replace("auth/", "")}`);
     } finally {
       setLoading(false);
     }
