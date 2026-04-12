@@ -73,13 +73,17 @@ export default function MobileHome({ allItems = [], actions, library }) {
       {/* 🎵 STRONGER BLUR FOR EXPANDED PLAYER */}
       <PlayerBackdrop />
 
-      {/* MAIN CONTENT */}
+      {/* MAIN CONTENT — primary vertical scroll surface */}
       <div
         style={{
           position: "relative",
           zIndex: 1,
           height: "100%",
           overflowY: "auto",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",   // iOS momentum scroll
+          overscrollBehaviorY: "contain",      // stop vertical scroll chaining
+          willChange: "scroll-position",        // hint GPU compositing
           paddingBottom: isExpanded ? 0 : 112,
         }}
       >

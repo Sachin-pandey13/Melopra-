@@ -23,16 +23,24 @@ export default function HomeScreen({ allItems = [], actions, library }) {
   const moodFilters = ["Home", "Energize", "Relax", "Commute", "Workout", "Focus"];
 
   return (
-    <div style={{ paddingBottom: 40, background: "transparent" }}>
+    <div style={{ paddingBottom: 40, background: "transparent", touchAction: "pan-y" }}>
       {/* Top Bar Navigation */}
       <MobileTopBar title="Melopra" />
 
-      {/* Filter Pills Layout */}
-      <div 
-        className="flex gap-3 px-4 py-2 overflow-x-auto hide-scrollbar"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x" }}
+      {/* Filter Pills — horizontal scroll row */}
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          padding: "8px 16px",
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+          overscrollBehaviorX: "contain",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+        }}
       >
-        <style dangerouslySetInnerHTML={{ __html: `.hide-scrollbar::-webkit-scrollbar { display: none; }` }} />
+        <style dangerouslySetInnerHTML={{ __html: `.mood-pills::-webkit-scrollbar{display:none}` }} />
         {moodFilters.map((filter) => (
           <button 
             key={filter}
