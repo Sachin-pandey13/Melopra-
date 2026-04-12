@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import MobileTopBar from "../components/MobileTopBar";
 import { useAuth } from "../../contexts/AuthContext";
 import useLibraryController from "../../hooks/useLibraryController";
@@ -6,6 +6,9 @@ import { playItem } from "../state/useNowPlaying";
 import { createPlaylist } from "../../utils/FirestorePlaylists";
 import ArtistSearchPage from "./ArtistSearchPage";
 import PlaylistCollage from "../components/PlaylistCollage";
+import { getAuth, updateProfile } from "firebase/auth";
+import { getFirestore, doc, updateDoc, setDoc } from "firebase/firestore";
+import useFirestoreProfileImage from "../../hooks/useFirestoreProfileImage";
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
@@ -103,7 +106,7 @@ function HScrollRow({ title, children, emptyText, rightAction }) {
 
 /* ========== LIBRARY SCREEN ========== */
 export default function LibraryScreen({ actions, library: externalLibrary, onLoginRequest }) {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   // Use the external library if provided, otherwise create our own
   const internalLibrary = useLibraryController({ currentUser });
   const library = externalLibrary || internalLibrary;
@@ -187,6 +190,9 @@ export default function LibraryScreen({ actions, library: externalLibrary, onLog
   return (
     <div style={{ paddingBottom: 20 }}>
       <MobileTopBar title="Your Library" />
+
+      {/* ========== PROFILE CARD ========== */}
+      <ProfileCard currentUser={currentUser} logout={logout} />
 
       {/* ========== LIKED SONGS ========== */}
       <HScrollRow title="❤️ Liked Songs" emptyText="Like songs to see them here">
@@ -849,6 +855,163 @@ function PlaylistDetailOverlay({ playlist, tracks, allPlaylists, onClose, onPlay
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ========== PROFILE CARD ========== */
+function ProfileCard({ currentUser, logout }) {
+  const [editingName, setEditingName] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  const profileFromFirestore = useFirestoreProfileImage(currentUser?.uid);
+
+  useEffect(() => {
+    if (currentUser?.displayName) setDisplayName(currentUser.displayName);
+    else if (currentUser?.email) setDisplayName(currentUser.email.split("@")[0]);
+  }, [currentUser]);
+
+  const handlePhotoUpload = async (file) => {
+    if (!file || !currentUser?.uid) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", "Melopra");
+      formData.append("folder", "melopra-profiles");
+      const res = await fetch("https://api.cloudinary.com/v1_1/dkmmoprxk/upload", {
+        method: "POST", body: formData,
+      });
+      const data = await res.json();
+      if (!data.secure_url) throw new Error("Upload failed");
+      const db = getFirestore();
+      await setDoc(doc(db, "users", currentUser.uid), { profileImage: data.secure_url }, { merge: true });
+      await updateProfile(getAuth().currentUser, { photoURL: data.secure_url });
+    } catch {
+      alert("Photo upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!displayName.trim() || !currentUser) return;
+    setSavingName(true);
+    try {
+      await updateProfile(getAuth().currentUser, { displayName: displayName.trim() });
+      const db = getFirestore();
+      await setDoc(doc(db, "users", currentUser.uid), { displayName: displayName.trim() }, { merge: true });
+      setEditingName(false);
+    } catch {
+      alert("Failed to update name.");
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  if (!currentUser) return null;
+
+  const avatarSrc = profileFromFirestore || currentUser.photoURL;
+  const optimizedAvatar = avatarSrc?.includes("cloudinary")
+    ? avatarSrc.replace("/upload/", "/upload/q_auto:best,f_auto,w_160,h_160,c_fill,g_face/")
+    : avatarSrc;
+
+  return (
+    <div style={{
+      margin: "12px 16px 4px",
+      padding: "20px",
+      borderRadius: 20,
+      background: "linear-gradient(135deg,rgba(124,58,237,0.15) 0%,rgba(29,185,84,0.1) 100%)",
+      border: "1px solid rgba(255,255,255,0.08)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {/* ── Avatar (tap to change photo) ── */}
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          style={{ position: "relative", width: 64, height: 64, borderRadius: "50%", flexShrink: 0, cursor: "pointer" }}
+        >
+          <div style={{
+            width: "100%", height: "100%", borderRadius: "50%",
+            background: "linear-gradient(135deg,#7c3aed,#a855f7)",
+            border: "2px solid rgba(255,255,255,0.2)",
+            overflow: "hidden",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 24, fontWeight: 700, color: "white",
+          }}>
+            {optimizedAvatar
+              ? <img src={optimizedAvatar} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : (currentUser.email?.[0]?.toUpperCase() || "U")}
+          </div>
+          <div style={{
+            position: "absolute", bottom: 0, right: 0,
+            width: 22, height: 22, borderRadius: "50%",
+            background: uploading ? "#666" : "#1DB954",
+            border: "2px solid #000",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 11,
+          }}>
+            {uploading ? "⏳" : "📷"}
+          </div>
+        </div>
+        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: "none" }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f); }} />
+
+        {/* ── Name + Email ── */}
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          {editingName ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                autoFocus
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") setEditingName(false); }}
+                style={{
+                  flex: 1, background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: 8, color: "white",
+                  padding: "6px 10px", fontSize: 15, outline: "none",
+                }}
+              />
+              <button onClick={handleSaveName} disabled={savingName}
+                style={{
+                  padding: "6px 12px", borderRadius: 8,
+                  background: "#1DB954", border: "none",
+                  color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                }}>
+                {savingName ? "…" : "Save"}
+              </button>
+            </div>
+          ) : (
+            <div onClick={() => setEditingName(true)} style={{ cursor: "pointer" }}>
+              <p style={{ fontSize: 17, fontWeight: 700, color: "#fff", margin: 0 }}>
+                {currentUser.displayName || displayName || "Your Name"}
+                <span style={{ fontSize: 12, opacity: 0.4, marginLeft: 6 }}>✏️</span>
+              </p>
+              <p style={{ fontSize: 12, opacity: 0.45, margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {currentUser.email}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Sign Out ── */}
+      <button
+        onClick={() => { if (window.confirm("Sign out of Melopra?")) logout(); }}
+        style={{
+          marginTop: 16, width: "100%",
+          padding: "11px", borderRadius: 12,
+          border: "1px solid rgba(255,80,80,0.3)",
+          background: "rgba(255,50,50,0.1)",
+          color: "#ff5f5f", fontSize: 14, fontWeight: 600,
+          cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}
+      >
+        🚪 Sign Out
+      </button>
     </div>
   );
 }
