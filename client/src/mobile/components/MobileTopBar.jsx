@@ -239,7 +239,7 @@ export default function MobileTopBar({
           style={{
             position: "fixed",
             inset: 0,
-            zIndex: 99,
+            zIndex: 20, // Must be lower than topbar's z-30 otherwise it blocks clicks
           }}
         />
       )}
