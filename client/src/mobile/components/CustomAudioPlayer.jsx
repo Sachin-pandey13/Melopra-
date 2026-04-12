@@ -1,6 +1,8 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useNowPlaying, playNext, normalizeId, playPrevious, togglePlay } from "../state/useNowPlaying";
 import { setPlayerTime, setSeekListener } from "../state/usePlayerTime";
+import { useAuth } from "../../contexts/AuthContext";
+import { logUserEvent } from "../../api/logUserEvent";
 
 let ytApiLoaded = false;
 let ytApiLoadPromise = null;
@@ -20,12 +22,37 @@ function loadYTApi() {
 
 export default function CustomAudioPlayer() {
   const { current, isPlaying } = useNowPlaying();
+  const { currentUser } = useAuth();
 
   const playerRef = useRef(null);  // YT.Player instance
   const containerRef = useRef(null);
   const lastVideoIdRef = useRef(null);
   const isReadyRef = useRef(false);
   const timerRef = useRef(null);
+
+  // ── Play duration tracking (for MongoDB event logging) ──────────────────
+  const playStartRef = useRef(null);   // timestamp when current track started
+  const songDurRef = useRef(0);         // total duration of current song
+
+  // Helper: log event to backend (MongoDB + Firebase)
+  const logEvent = useCallback((eventType) => {
+    if (!currentUser || !current) return;
+    const playDuration = playStartRef.current
+      ? Math.floor((Date.now() - playStartRef.current) / 1000)
+      : 0;
+    logUserEvent({
+      userId:       currentUser.uid,
+      songId:       normalizeId(current.id),
+      event:        eventType,
+      playDuration,
+      songDuration: songDurRef.current,
+      songMeta: {
+        title:    current.title  || "",
+        artist:   current.artist || "",
+        genre:    current.category || "",
+      },
+    });
+  }, [currentUser, current]);
 
   // Initialize/replace the YouTube player
   const initPlayer = useCallback((videoId) => {
@@ -66,20 +93,30 @@ export default function CustomAudioPlayer() {
           if (isPlaying) event.target.playVideo();
           else event.target.pauseVideo();
           startProgressLoop();
+          // Log "play" event when track actually starts
+          playStartRef.current = Date.now();
+          logEvent("play");
         },
         onStateChange: (event) => {
+          if (event.data === window.YT.PlayerState.PLAYING) {
+            // Capture song duration when first playing
+            try { songDurRef.current = event.target.getDuration() || 0; } catch(e) {}
+          }
           if (event.data === window.YT.PlayerState.ENDED) {
+            // Log "complete" before moving to next
+            logEvent("complete");
             stopProgressLoop();
             playNext();
           }
         },
         onError: (event) => {
           console.warn("YT Player error, skipping:", event.data);
+          logEvent("skip");
           playNext();
         }
       }
     });
-  }, [isPlaying]);
+  }, [isPlaying, logEvent]);
 
   // Progress tracking loop
   const startProgressLoop = useCallback(() => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 import BottomNav from "./BottomNav";
 import CustomAudioPlayer from "./components/CustomAudioPlayer";
@@ -6,6 +6,7 @@ import MiniPlayer from "./components/MiniPlayer";
 import VoiceAssistant from "./components/VoiceAssistant";
 import PlayerBackdrop from "./components/PlayerBackdrop";
 import GlobalBackdrop from "./components/GlobalBackdrop";
+import MobileLoginWall from "./components/MobileLoginWall";
 
 import HomeScreen from "./screens/HomeScreen";
 import SearchScreen from "./screens/SearchScreen";
@@ -13,13 +14,35 @@ import LibraryScreen from "./screens/LibraryScreen";
 import QueueScreen from "./screens/QueueScreen";
 
 import { useNowPlaying } from "./state/useNowPlaying";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function MobileHome({ allItems = [], actions, library }) {
   const [activeTab, setActiveTab] = useState("home");
   const { isExpanded } = useNowPlaying();
+  const { currentUser } = useAuth();
+
+  // Login-wall state
+  const [showLoginWall, setShowLoginWall] = useState(false);
+  const [pendingPlay, setPendingPlay] = useState(null); // song to play after login
+
+  // ── Auth-gated play function ─────────────────────────────────────────────
+  // Wraps the real actions.play. If the user isn't logged in, store the
+  // song and open the login wall. After successful login the wall calls
+  // onSuccess which fires the pending play.
+  const guardedPlay = useCallback((song) => {
+    if (!currentUser) {
+      setPendingPlay(song);
+      setShowLoginWall(true);
+      return;
+    }
+    actions?.play?.(song);
+  }, [currentUser, actions]);
+
+  // Merge guarded play into actions passed down to screens
+  const guardedActions = actions ? { ...actions, play: guardedPlay } : actions;
 
   const renderScreen = () => {
-    const screenProps = { allItems, actions, library };
+    const screenProps = { allItems, actions: guardedActions, library };
 
     switch (activeTab) {
       case "search":
@@ -77,6 +100,21 @@ export default function MobileHome({ allItems = [], actions, library }) {
         <BottomNav
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+        />
+      )}
+
+      {/* ========== AUTH LOGIN WALL ========== */}
+      {showLoginWall && (
+        <MobileLoginWall
+          onClose={() => setShowLoginWall(false)}
+          onSuccess={() => {
+            setShowLoginWall(false);
+            // Play the song that triggered the login wall
+            if (pendingPlay) {
+              actions?.play?.(pendingPlay);
+              setPendingPlay(null);
+            }
+          }}
         />
       )}
 
