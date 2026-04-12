@@ -32,7 +32,9 @@ export default function InteractiveItem({
 
   /* ---------- POINTER START ---------- */
   const onPointerDown = (e) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // ⚠️ Do NOT capture the pointer here — capturing blocks the parent
+    // horizontal scroll container from receiving the touch gesture.
+    // We only capture later if we confirm a horizontal-only swipe.
 
     hasEndedRef.current = false;
     longPressTriggered.current = false;
@@ -59,26 +61,45 @@ export default function InteractiveItem({
 
     const dxVal = e.clientX - startRef.current.x;
     const dyVal = e.clientY - startRef.current.y;
+    const absDx = Math.abs(dxVal);
+    const absDy = Math.abs(dyVal);
 
     deltaRef.current = { dx: dxVal, dy: dyVal };
 
-    // ✅ FIX: Relaxed to 6px (was 4px) so vertical swipes release to
-    // native scroll instantly — eliminates the "sticky/levitation" feel
-    if (Math.abs(dyVal) > 6 && Math.abs(dyVal) > Math.abs(dxVal)) {
+    // Determine scroll direction once we have enough movement
+    if (absDx < 6 && absDy < 6) return; // too small to judge yet
+
+    if (absDy > absDx) {
+      // Vertical drag → native page scroll wins, release everything
       isScrollingRef.current = true;
       hasEndedRef.current = true;
       setDx(0);
       clearLongPress();
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch (err) {}
       return;
     }
+
+    // Horizontal drag — check if we're inside a horizontally-scrollable
+    // container (i.e. an album row). If yes, let the container scroll instead
+    // of handling it as a swipe gesture.
+    const scrollParent = e.currentTarget.closest('[data-allow-swipe="true"]');
+    if (!scrollParent) {
+      // We are inside a horizontal scroll row — release so row can scroll
+      isScrollingRef.current = true;
+      hasEndedRef.current = true;
+      setDx(0);
+      clearLongPress();
+      return;
+    }
+
+    // We are in a vertical list with swipe enabled — take over the pointer
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
 
     setDx(dxVal);
 
     // Cancel long press if user starts dragging
-    if (Math.abs(dxVal) > TAP_THRESHOLD || Math.abs(dyVal) > TAP_THRESHOLD) {
+    if (absDx > TAP_THRESHOLD || absDy > TAP_THRESHOLD) {
       clearLongPress();
     }
   };

@@ -129,10 +129,11 @@ const [selectedArtist, setSelectedArtist] = useState(null);
       <h3 className="text-xl font-semibold">FlowCast</h3>
 
       <div
-  className="flex gap-6 overflow-x-auto no-scrollbar py-2 snap-x snap-mandatory"
+  className="flex gap-6 overflow-x-auto no-scrollbar py-2"
   style={{
     scrollbarWidth: "none",          // Firefox
-    msOverflowStyle: "none",          // IE/Edge
+    msOverflowStyle: "none",         // IE/Edge
+    touchAction: "pan-x",            // let browser handle horizontal scroll natively
   }}
 >
 

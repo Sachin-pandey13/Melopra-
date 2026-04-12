@@ -28,8 +28,8 @@ export default function HorizontalSection({
         style={{ 
           display: "flex", 
           gap: 16, 
-          overflowX: "auto", 
-          scrollSnapType: "x mandatory",
+          overflowX: "auto",
+          touchAction: "pan-x",
           paddingBottom: 8,
           scrollbarWidth: "none", 
           msOverflowStyle: "none" 
@@ -81,8 +81,7 @@ export default function HorizontalSection({
             >
               <div style={{ 
                 width: type === "card" ? 220 : 130, 
-                flexShrink: 0, 
-                scrollSnapAlign: "start" 
+                flexShrink: 0,
               }}>
                 <div
                   style={{

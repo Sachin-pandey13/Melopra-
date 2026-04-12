@@ -29,8 +29,8 @@ export default function HomeScreen({ allItems = [], actions, library }) {
 
       {/* Filter Pills Layout */}
       <div 
-        className="flex gap-3 px-4 py-2 overflow-x-auto snap-x hide-scrollbar"
-        style={{ scrollbarWidth: "none", "-ms-overflow-style": "none" }}
+        className="flex gap-3 px-4 py-2 overflow-x-auto hide-scrollbar"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x" }}
       >
         <style dangerouslySetInnerHTML={{ __html: `.hide-scrollbar::-webkit-scrollbar { display: none; }` }} />
         {moodFilters.map((filter) => (

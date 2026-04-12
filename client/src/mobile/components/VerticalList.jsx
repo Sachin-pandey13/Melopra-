@@ -10,7 +10,7 @@ export default function VerticalList({
   const { play, addToQueue, toggleLike, addToPlaylist } = actions;
 
   return (
-    <div style={{ padding: "0 16px" }}>
+    <div style={{ padding: "0 16px" }} data-allow-swipe="true">
       {items.map((item) => {
         const isNowPlaying = item.id === nowPlayingId;
 
