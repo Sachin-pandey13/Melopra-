@@ -71,6 +71,7 @@ export default function HorizontalSection({
             <InteractiveItem
               key={item.id}
               item={item}
+              noSwipe={true}
               onPress={() => {
                 if (item.onPlay) item.onPlay();
                 else play(item);
