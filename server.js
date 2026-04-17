@@ -494,68 +494,49 @@ app.get("/api/stream", async (req, res) => {
   res.on("error",  releaseSlot);
 
   try {
-    // ── Primary: youtubei.js (bot-resistant, no API key) ──────────
+    // ── Primary: play-dl (most reliable, handles auth internally) ──
+    try {
+      const streamInfo = await play.stream(id, { quality: 2 }); // quality 2 = 128kbps
+      res.setHeader('Content-Type', streamInfo.type || 'audio/mpeg');
+      res.setHeader('Transfer-Encoding', 'chunked');
+      res.status(200);
+      streamInfo.stream.pipe(res);
+      console.log(`[STREAM] play-dl streaming ${id}`);
+      return;
+    } catch (playDlErr) {
+      console.warn(`[STREAM] play-dl failed for ${id}:`, playDlErr.message);
+    }
+
+    // ── Fallback: youtubei.js ─────────────────────────────────────
     if (ytInner) {
       try {
-        const info = await ytInner.getBasicInfo(id);
-        const formats = info.streaming_data?.adaptive_formats || info.streaming_data?.formats || [];
-        const audioFormat = formats.find(f => f.mime_type?.startsWith('audio/mp4')) ||
-                            formats.find(f => f.mime_type?.startsWith('audio/'));
-
-        if (audioFormat?.url) {
-          const mimeType = audioFormat.mime_type?.split(';')[0] || 'audio/mp4';
-          const contentLength = audioFormat.content_length ? parseInt(audioFormat.content_length) : 0;
-          const range = req.headers.range;
-
-          if (range && contentLength > 0) {
-            const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
-            const start = parseInt(startStr, 10);
-            const end = endStr ? parseInt(endStr, 10) : contentLength - 1;
-            const upstream = await axios.get(audioFormat.url, {
-              responseType: 'stream',
-              headers: { Range: `bytes=${start}-${end}`, 'User-Agent': 'Mozilla/5.0' },
-              timeout: 30000,
-            });
-            res.status(206).set({
-              "Content-Range": `bytes ${start}-${end}/${contentLength}`,
-              "Accept-Ranges": "bytes",
-              "Content-Length": end - start + 1,
-              "Content-Type": mimeType,
-            });
-            return upstream.data.pipe(res);
-          } else {
-            const upstream = await axios.get(audioFormat.url, {
-              responseType: 'stream',
-              headers: { 'User-Agent': 'Mozilla/5.0' },
-              timeout: 30000,
-            });
-            res.status(200).set({
-              "Content-Type": mimeType,
-              ...(contentLength > 0 ? { "Content-Length": contentLength, "Accept-Ranges": "bytes" } : {}),
-            });
-            return upstream.data.pipe(res);
-          }
-        }
+        const stream = await ytInner.download(id, { type: 'audio', quality: 'best' });
+        res.setHeader('Content-Type', 'audio/webm');
+        res.status(200);
+        const { Readable } = require('stream');
+        Readable.from(stream).pipe(res);
+        console.log(`[STREAM] youtubei.js streaming ${id}`);
+        return;
       } catch (ytInnerErr) {
         console.warn(`[STREAM] youtubei.js failed for ${id}:`, ytInnerErr.message);
       }
     }
 
-    // ── Fallback: ytdl-core ───────────────────────────────────────
+    // ── Final Fallback: ytdl-core ─────────────────────────────────
     console.log(`[STREAM] Falling back to ytdl-core for ${id}`);
     let info = ytdlInfoCache.get(id);
     if (!info || info.expiresAt < Date.now()) {
-      const liveInfo = await ytdl.getInfo(id);
+      const liveInfo = await ytdl.getInfo(`https://www.youtube.com/watch?v=${id}`);
       info = { formats: liveInfo.formats, expiresAt: Date.now() + CACHE_TTL_MS };
       ytdlInfoCache.set(id, info);
     }
     let audioFormat = info.formats.find(f => f.container === 'mp4' && f.hasAudio && !f.hasVideo);
-    if (!audioFormat) audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio" });
-    if (!audioFormat) return res.status(404).json({ error: "No audio stream available" });
+    if (!audioFormat) audioFormat = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
+    if (!audioFormat) return res.status(404).json({ error: 'No audio stream available' });
 
-    const mimeType = audioFormat.mimeType || "audio/webm";
-    res.status(200).set("Content-Type", mimeType);
-    ytdl(id, { format: audioFormat }).pipe(res);
+    res.setHeader('Content-Type', audioFormat.mimeType || 'audio/webm');
+    res.status(200);
+    ytdl(`https://www.youtube.com/watch?v=${id}`, { format: audioFormat }).pipe(res);
 
   } catch (err) {
     console.error("Stream Proxy Error:", err.message);
