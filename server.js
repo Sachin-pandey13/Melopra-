@@ -63,10 +63,18 @@ app.use(compression({
 }));
 
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://melopra.vercel.app",
-  ],
+  origin: (origin, callback) => {
+    // Allow all localhost origins (any port), Expo Go, and production domains
+    const allowed = [
+      'https://melopra.vercel.app',
+      'https://melopra-backend.onrender.com',
+    ];
+    if (!origin || allowed.includes(origin) || /^http:\/\/localhost(:\d+)?$/.test(origin) || origin.startsWith('exp://')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for now during development
+    }
+  },
   credentials: true,
 }));
 
@@ -471,13 +479,12 @@ app.get("/api/stream", async (req, res) => {
   const id = req.query.id;
   if (!id) return res.status(400).json({ error: "Missing ?id= parameter" });
 
-  // ── Concurrency guard ──────────────────────────────────────
+  // Explicit CORS for audio streaming (browsers require this on media elements)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges");
+
   if (activeStreams >= MAX_CONCURRENT_STREAMS) {
-    console.warn(`[STREAM] Concurrency limit reached (${activeStreams}/${MAX_CONCURRENT_STREAMS})`);
-    return res.status(503).json({
-      error:   "STREAM_BUSY",
-      message: "Server is at maximum stream capacity. Please retry in a moment.",
-    });
+    return res.status(503).json({ error: "STREAM_BUSY", message: "Server is busy. Please retry shortly." });
   }
 
   activeStreams++;
@@ -487,60 +494,75 @@ app.get("/api/stream", async (req, res) => {
   res.on("error",  releaseSlot);
 
   try {
+    // ── Primary: youtubei.js (bot-resistant, no API key) ──────────
+    if (ytInner) {
+      try {
+        const info = await ytInner.getBasicInfo(id);
+        const formats = info.streaming_data?.adaptive_formats || info.streaming_data?.formats || [];
+        const audioFormat = formats.find(f => f.mime_type?.startsWith('audio/mp4')) ||
+                            formats.find(f => f.mime_type?.startsWith('audio/'));
+
+        if (audioFormat?.url) {
+          const mimeType = audioFormat.mime_type?.split(';')[0] || 'audio/mp4';
+          const contentLength = audioFormat.content_length ? parseInt(audioFormat.content_length) : 0;
+          const range = req.headers.range;
+
+          if (range && contentLength > 0) {
+            const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(startStr, 10);
+            const end = endStr ? parseInt(endStr, 10) : contentLength - 1;
+            const upstream = await axios.get(audioFormat.url, {
+              responseType: 'stream',
+              headers: { Range: `bytes=${start}-${end}`, 'User-Agent': 'Mozilla/5.0' },
+              timeout: 30000,
+            });
+            res.status(206).set({
+              "Content-Range": `bytes ${start}-${end}/${contentLength}`,
+              "Accept-Ranges": "bytes",
+              "Content-Length": end - start + 1,
+              "Content-Type": mimeType,
+            });
+            return upstream.data.pipe(res);
+          } else {
+            const upstream = await axios.get(audioFormat.url, {
+              responseType: 'stream',
+              headers: { 'User-Agent': 'Mozilla/5.0' },
+              timeout: 30000,
+            });
+            res.status(200).set({
+              "Content-Type": mimeType,
+              ...(contentLength > 0 ? { "Content-Length": contentLength, "Accept-Ranges": "bytes" } : {}),
+            });
+            return upstream.data.pipe(res);
+          }
+        }
+      } catch (ytInnerErr) {
+        console.warn(`[STREAM] youtubei.js failed for ${id}:`, ytInnerErr.message);
+      }
+    }
+
+    // ── Fallback: ytdl-core ───────────────────────────────────────
+    console.log(`[STREAM] Falling back to ytdl-core for ${id}`);
     let info = ytdlInfoCache.get(id);
     if (!info || info.expiresAt < Date.now()) {
       const liveInfo = await ytdl.getInfo(id);
       info = { formats: liveInfo.formats, expiresAt: Date.now() + CACHE_TTL_MS };
       ytdlInfoCache.set(id, info);
     }
-    
-    // Explicitly prefer MP4/M4A for iOS Safari compatibility. 
-    // WebM Opus throws native decode errors on many iOS versions.
     let audioFormat = info.formats.find(f => f.container === 'mp4' && f.hasAudio && !f.hasVideo);
-    if (!audioFormat) {
-      audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio" });
-    }
+    if (!audioFormat) audioFormat = ytdl.chooseFormat(info.formats, { quality: "highestaudio" });
+    if (!audioFormat) return res.status(404).json({ error: "No audio stream available" });
 
-    if (!audioFormat) {
-      return res.status(404).json({ error: "No audio stream available" });
-    }
-
-    const contentLength = audioFormat.contentLength ? parseInt(audioFormat.contentLength, 10) : 0;
     const mimeType = audioFormat.mimeType || "audio/webm";
-    const range = req.headers.range;
+    res.status(200).set("Content-Type", mimeType);
+    ytdl(id, { format: audioFormat }).pipe(res);
 
-    if (range && contentLength > 0) {
-      const parts = range.replace(/bytes=/, "").split("-");
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : contentLength - 1;
-      const chunksize = (end - start) + 1;
-
-      res.status(206).set({
-        "Content-Range": `bytes ${start}-${end}/${contentLength}`,
-        "Accept-Ranges": "bytes",
-        "Content-Length": chunksize,
-        "Content-Type": mimeType
-      });
-
-      ytdl(id, {
-        format: audioFormat,
-        range: { start, end }
-      }).pipe(res);
-    } else {
-      if (contentLength > 0) {
-        res.status(200).set({
-          "Content-Length": contentLength,
-          "Accept-Ranges": "bytes",
-          "Content-Type": mimeType
-        });
-      } else {
-        res.status(200).set("Content-Type", mimeType);
-      }
-      ytdl(id, { format: audioFormat }).pipe(res);
-    }
   } catch (err) {
     console.error("Stream Proxy Error:", err.message);
-    if (!res.headersSent) {
+    if (!res.headersSent) res.status(500).json({ error: "Failed to stream audio.", message: err.message });
+  }
+});
+
       res.status(500).json({ error: "Failed to pipe audio stream." });
     }
   }
