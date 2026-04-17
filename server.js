@@ -462,17 +462,16 @@ app.get("/api/yt-related", async (req, res) => {
 });
 
 /* -----------------------------------------------------------
- 🔗 Resolve Stream URL (server-side Invidious lookup)
+ 🔗 Resolve Stream URL (server-side Piped lookup)
     Returns a direct audio URL — browser plays it without
     going through this server. No streaming bandwidth used.
-    Invidious is called server-to-server (no CORS issue).
 ----------------------------------------------------------- */
-const INVIDIOUS_INSTANCES = [
-  'https://inv.nadeko.net',
-  'https://invidious.privacyredirect.com',
-  'https://invidious.reallyaweso.me',
-  'https://invidious.jing.rocks',
-  'https://iv.datura.network',
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.tokhmi.xyz',
+  'https://pipedapi.smnz.de',
+  'https://piped-api.garudalinux.org',
+  'https://pipedapi.adminforge.de'
 ];
 
 app.get('/api/resolve-stream', async (req, res) => {
@@ -481,26 +480,26 @@ app.get('/api/resolve-stream', async (req, res) => {
 
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  for (const instance of INVIDIOUS_INSTANCES) {
+  for (const instance of PIPED_INSTANCES) {
     try {
-      const resp = await axios.get(`${instance}/api/v1/videos/${id}?fields=adaptiveFormats`, {
+      const resp = await axios.get(`${instance}/streams/${id}`, {
         timeout: 8000,
         headers: { 'User-Agent': 'Mozilla/5.0' },
       });
-      const formats = resp.data?.adaptiveFormats || [];
-      const audioFormats = formats.filter((f) => f.type?.startsWith('audio/'));
-      if (!audioFormats.length) continue;
-      const best = audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      const formats = resp.data?.audioStreams || [];
+      if (!formats.length) continue;
+      
+      const best = formats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
       if (best?.url) {
         console.log(`[RESOLVE] ${id} resolved via ${instance}`);
-        return res.json({ url: best.url, type: best.type?.split(';')[0] || 'audio/webm' });
+        return res.json({ url: best.url, type: best.mimeType || 'audio/webm' });
       }
     } catch (err) {
       console.warn(`[RESOLVE] ${instance} failed:`, err.message);
     }
   }
 
-  return res.status(503).json({ error: 'All Invidious instances failed' });
+  return res.status(503).json({ error: 'All Piped instances failed' });
 });
 
 /* -----------------------------------------------------------
