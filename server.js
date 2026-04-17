@@ -563,11 +563,6 @@ app.get("/api/stream", async (req, res) => {
   }
 });
 
-      res.status(500).json({ error: "Failed to pipe audio stream." });
-    }
-  }
-});
-
 /* -----------------------------------------------------------
  🖼️  Artist Image Proxy
     Fetches Deezer artist images server-side so the browser
