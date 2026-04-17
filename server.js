@@ -462,6 +462,48 @@ app.get("/api/yt-related", async (req, res) => {
 });
 
 /* -----------------------------------------------------------
+ 🔗 Resolve Stream URL (server-side Invidious lookup)
+    Returns a direct audio URL — browser plays it without
+    going through this server. No streaming bandwidth used.
+    Invidious is called server-to-server (no CORS issue).
+----------------------------------------------------------- */
+const INVIDIOUS_INSTANCES = [
+  'https://inv.nadeko.net',
+  'https://invidious.privacyredirect.com',
+  'https://invidious.reallyaweso.me',
+  'https://invidious.jing.rocks',
+  'https://iv.datura.network',
+];
+
+app.get('/api/resolve-stream', async (req, res) => {
+  const { id } = req.query;
+  if (!id) return res.status(400).json({ error: 'Missing ?id= parameter' });
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  for (const instance of INVIDIOUS_INSTANCES) {
+    try {
+      const resp = await axios.get(`${instance}/api/v1/videos/${id}?fields=adaptiveFormats`, {
+        timeout: 8000,
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+      });
+      const formats = resp.data?.adaptiveFormats || [];
+      const audioFormats = formats.filter((f) => f.type?.startsWith('audio/'));
+      if (!audioFormats.length) continue;
+      const best = audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      if (best?.url) {
+        console.log(`[RESOLVE] ${id} resolved via ${instance}`);
+        return res.json({ url: best.url, type: best.type?.split(';')[0] || 'audio/webm' });
+      }
+    } catch (err) {
+      console.warn(`[RESOLVE] ${instance} failed:`, err.message);
+    }
+  }
+
+  return res.status(503).json({ error: 'All Invidious instances failed' });
+});
+
+/* -----------------------------------------------------------
  🔉 Native Audio Stream Proxy
     Provides background-playable chunked audio stream.
     ✅ Concurrency semaphore — max 30 parallel streams
