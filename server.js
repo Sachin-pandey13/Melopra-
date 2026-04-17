@@ -496,7 +496,8 @@ app.get("/api/stream", async (req, res) => {
   try {
     // ── Primary: play-dl (most reliable, handles auth internally) ──
     try {
-      const streamInfo = await play.stream(id, { quality: 2 }); // quality 2 = 128kbps
+      const ytUrl = `https://www.youtube.com/watch?v=${id}`;
+      const streamInfo = await play.stream(ytUrl, { quality: 2 }); // quality 2 = 128kbps
       res.setHeader('Content-Type', streamInfo.type || 'audio/mpeg');
       res.setHeader('Transfer-Encoding', 'chunked');
       res.status(200);
