@@ -68,7 +68,7 @@ function ArtistSkeleton() {
 const OnboardingPage = ({ user, onComplete }) => {
   const [artists, setArtists] = useState([]);
   const [selectedArtists, setSelectedArtists] = useState([]);
-  const [selectedLanguages, setSelectedLanguages] = useState([]);
+  const [selectedLanguages, setSelectedLanguages] = useState([]); // Array of language objects
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -78,13 +78,16 @@ const OnboardingPage = ({ user, onComplete }) => {
   const abortRef = useRef(null);
 
   // ── Fetch artists via JioSaavn (/api/artist-search) ──────────────────────
-  const fetchArtists = useCallback(async (lang, query) => {
-    // Cancel any in-flight request
+  const fetchArtists = useCallback(async (langs, query) => {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const cacheKey = `melopra_ob_artists__${lang}__${query}`;
+    // ensure langs is an array
+    const langArray = Array.isArray(langs) ? langs : [langs];
+    if (langArray.length === 0) langArray.push("english");
+
+    const cacheKey = `melopra_ob_artists__${langArray.join(",")}__${query}`;
     const cached = readCache(cacheKey);
     if (cached) {
       setArtists(cached);
@@ -97,23 +100,22 @@ const OnboardingPage = ({ user, onComplete }) => {
       let results = [];
 
       if (query.trim().length > 0) {
-        // ── User is searching ──────────────────────────────────────────
-        const res = await fetch(
-          `${API}/api/artist-search?artist=${encodeURIComponent(query.trim())}`,
-          { signal: controller.signal }
-        );
+        // User searching
+        const res = await fetch(`${API}/api/artist-search?artist=${encodeURIComponent(query.trim())}`, { signal: controller.signal });
         const data = await res.json();
         results = data.artists || [];
       } else {
-        // ── No search → fetch language-specific popular artists ────────
-        const defaultNames = LANG_DEFAULT_ARTISTS[lang] || LANG_DEFAULT_ARTISTS.english;
-        const promises = defaultNames.slice(0, 8).map((name) =>
-          fetch(
-            `${API}/api/artist-search?artist=${encodeURIComponent(name)}`,
-            { signal: controller.signal }
-          )
-            .then((r) => r.json())
-            .then((d) => (d.artists || []).slice(0, 2))
+        // No search -> fetch default popular artists for ALL selected languages
+        const allNames = [];
+        langArray.forEach(lang => {
+          const names = LANG_DEFAULT_ARTISTS[lang] || LANG_DEFAULT_ARTISTS.english;
+          allNames.push(...names.slice(0, 6)); // Take top 6 from each to avoid too many requests
+        });
+
+        const promises = [...new Set(allNames)].map(name =>
+          fetch(`${API}/api/artist-search?artist=${encodeURIComponent(name)}`, { signal: controller.signal })
+            .then(r => r.json())
+            .then(d => (d.artists || []).slice(0, 1)) // Take top match for each name
             .catch(() => [])
         );
 
@@ -140,16 +142,19 @@ const OnboardingPage = ({ user, onComplete }) => {
 
   // ── Effect 1: Language change → load instantly (no search active) ───────
   useEffect(() => {
-    if (searchTerm) return; // search effect handles this case
-    const langKey = (selectedLanguages[0]?.name || "english").toLowerCase();
-    fetchArtists(langKey, "");
-  }, [selectedLanguages]); // intentionally excludes fetchArtists/searchTerm
+    if (searchTerm) return; 
+    const langKeys = selectedLanguages.length > 0 
+      ? selectedLanguages.map(l => l.name.toLowerCase()) 
+      : ["english"];
+    fetchArtists(langKeys, "");
+  }, [selectedLanguages]); 
 
   // ── Effect 2: Search term → 1200ms debounce, min 2 chars ─────────────────
   useEffect(() => {
-    if (!searchTerm) return; // language effect handles empty-term case
-
-    const langKey = (selectedLanguages[0]?.name || "english").toLowerCase();
+    if (!searchTerm) return; 
+    const langKeys = selectedLanguages.length > 0 
+      ? selectedLanguages.map(l => l.name.toLowerCase()) 
+      : ["english"];
 
     // Too short — clear results and stop
     if (searchTerm.trim().length < 2) {
@@ -159,7 +164,7 @@ const OnboardingPage = ({ user, onComplete }) => {
     }
 
     // Check cache immediately — no delay if we already have the result
-    const cacheKey = `melopra_ob_artists__${langKey}__${searchTerm.trim()}`;
+    const cacheKey = `melopra_ob_artists__${langKeys.join(",")}__${searchTerm.trim()}`;
     const cached = readCache(cacheKey);
     if (cached) {
       setIsTyping(false);
@@ -170,7 +175,7 @@ const OnboardingPage = ({ user, onComplete }) => {
     // Debounce: wait 1200ms after last keystroke before firing API
     const timer = setTimeout(() => {
       setIsTyping(false);
-      fetchArtists(langKey, searchTerm);
+      fetchArtists(langKeys, searchTerm);
     }, 1200);
 
     return () => clearTimeout(timer);
@@ -186,7 +191,13 @@ const OnboardingPage = ({ user, onComplete }) => {
   };
 
   const toggleLanguage = (lang) => {
-    setSelectedLanguages([lang]);
+    setSelectedLanguages((prev) => {
+      if (prev.some(l => l.name === lang.name)) {
+        return prev.filter(l => l.name !== lang.name);
+      } else {
+        return [...prev, lang];
+      }
+    });
     setSearchTerm("");
     setIsTyping(false);
     setCurrentRegion(lang.region || "US");

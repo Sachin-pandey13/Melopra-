@@ -59,6 +59,11 @@ import "../index.css";
 
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
+const BACKEND_URL =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:4000"
+    : "https://melopra-backend.onrender.com");
 const PLAYED_KEY = "melopra_played_yt";
 const SAVED_YT_RESULTS = "melopra_yt_results";
 
@@ -1260,40 +1265,22 @@ const updateRecentlyPlayed = (album) => {
     }
   };
 
-  // Fetch YouTube related/next videos for "next section" feature
+  // Fetch YouTube related/next videos via backend (uses youtubei.js — no quota)
   const fetchYouTubeNext = async (videoId) => {
     try {
-      const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&relatedToVideoId=${videoId}&type=video&maxResults=20&key=${YOUTUBE_API_KEY}`
-      );
+      const res = await fetch(`${BACKEND_URL}/api/yt-related?id=${videoId}`);
+      if (!res.ok) return [];
       const data = await res.json();
-      const items =
-        (data.items || [])
-          .filter((item) => {
-            const title = item.snippet.title;
-            return filterJunk(title);
-          })
-          .map((item) => {
-  const detected = resolveGenre({
-    title: item.snippet.title,
-    artist: item.snippet.channelTitle,
-  });
-
-  return {
-    id: `yt-${item.id.videoId}`,
-    title: item.snippet.title,
-    artist: item.snippet.channelTitle,
-    image: item.snippet.thumbnails?.medium?.url,
-    audio: `https://www.youtube.com/watch?v=${item.id.videoId}`,
-    video: "",
-    lyrics: [],
-    lang: detected,
-    language: detected,
-    category: "YouTube",
-  };
-}) || [];
-
-      return items;
+      if (!Array.isArray(data)) return [];
+      return data
+        .filter(v => filterJunk(v.title || ""))
+        .slice(0, 10)
+        .map(v => ({
+          ...v,
+          id:       v.id?.startsWith("yt-") ? v.id : `yt-${v.id}`,
+          audio:    v.audio || `https://www.youtube.com/watch?v=${v.id?.replace("yt-","")}`,
+          category: "YouTube",
+        }));
     } catch (e) {
       console.warn("Failed to fetch YouTube Next", e);
       return [];

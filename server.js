@@ -348,6 +348,38 @@ app.get("/api/play-song", async (req, res) => {
     Replaces Deezer Data (blocked) and YouTube Data (limited quota).
     Returns fast, global, and highly accurate artist objects.
 ----------------------------------------------------------- */
+// ── Shared helper: query JioSaavn artist search endpoint ────────────────────
+async function saavnArtistSearch(query, signal) {
+  // Primary: dedicated artist search (returns proper images)
+  try {
+    const r1 = await axios.get(
+      `https://www.jiosaavn.com/api.php?__call=search.getArtistResults&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web6dot0`,
+      { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    const items = r1.data?.results || [];
+    if (items.length > 0) {
+      return items.slice(0, 8).map(a => ({
+        id:    `saavn-${a.id}`,
+        name:  a.title,
+        image: (a.image || "").replace("50x50", "500x500").replace("150x150", "500x500"),
+        fans:  0,
+      })).filter(a => a.name);
+    }
+  } catch (_) {}
+
+  // Fallback: autocomplete (may have sparser artist data)
+  const r2 = await axios.get(
+    `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web6dot0`,
+    { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
+  );
+  return (r2.data?.artists?.data || []).map(a => ({
+    id:    `saavn-${a.id}`,
+    name:  a.title,
+    image: (a.image || "").replace("50x50", "500x500").replace("150x150", "500x500"),
+    fans:  0,
+  })).filter(a => a.name);
+}
+
 app.get("/api/artist-search", async (req, res) => {
   const query = req.query.artist;
   if (!query) return res.json({ artists: [] });
@@ -357,23 +389,7 @@ app.get("/api/artist-search", async (req, res) => {
   if (cached) return res.json({ artists: cached });
 
   try {
-    const response = await axios.get(
-      `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query.trim())}&_format=json&_marker=0&ctx=web6dot0`,
-      {
-        timeout: 5000,
-        headers: { "User-Agent": "Mozilla/5.0" }
-      }
-    );
-
-    const items = response.data?.artists?.data || [];
-    const artists = items.map((artist) => ({
-      id: `saavn-${artist.id}`, // Maintain uniform prefix style
-      name: artist.title,
-      // JioSaavn compresses images heavily, swap 50x50 with 150x150
-      image: (artist.image || "").replace("50x50", "150x150"),
-      fans: 0,
-    }));
-
+    const artists = await saavnArtistSearch(query.trim());
     saavnCache.set(key, artists, TTL.SAAVN);
     return res.json({ artists });
   } catch (err) {
@@ -403,28 +419,14 @@ const LANG_POPULAR_ARTISTS = {
 app.get("/api/deezer-artist", async (req, res) => {
   const artistQuery = req.query.artist;
   const lang        = (req.query.lang || "english").toLowerCase();
-
-  // Build JioSaavn query
-  const query = artistQuery?.trim() || (LANG_POPULAR_ARTISTS[lang]?.[0] ?? "popular music");
+  const query = (artistQuery?.trim()) || (LANG_POPULAR_ARTISTS[lang]?.[0] ?? "popular music");
 
   const key    = cacheKey("saavn", query);
   const cached = saavnCache.get(key);
   if (cached) return res.json({ artists: cached });
 
   try {
-    const response = await axios.get(
-      `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web6dot0`,
-      { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
-    );
-
-    const items   = response.data?.artists?.data || [];
-    const artists = items.map((a) => ({
-      id:    `saavn-${a.id}`,
-      name:  a.title,
-      image: (a.image || "").replace("50x50", "150x150"),
-      fans:  0,
-    }));
-
+    const artists = await saavnArtistSearch(query);
     saavnCache.set(key, artists, TTL.SAAVN);
     return res.json({ artists });
   } catch (err) {
