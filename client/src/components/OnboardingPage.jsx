@@ -73,6 +73,7 @@ const OnboardingPage = ({ user, onComplete }) => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentRegion, setCurrentRegion] = useState("US");
+  const [isTyping, setIsTyping] = useState(false); // true while user is still typing
 
   const abortRef = useRef(null);
 
@@ -137,17 +138,57 @@ const OnboardingPage = ({ user, onComplete }) => {
     }
   }, []);
 
-  // Re-fetch whenever language or search term changes (debounced)
+  // ── Effect 1: Language change → load instantly (no search active) ───────
   useEffect(() => {
+    if (searchTerm) return; // search effect handles this case
     const langKey = (selectedLanguages[0]?.name || "english").toLowerCase();
-    const timer = setTimeout(() => fetchArtists(langKey, searchTerm), searchTerm ? 500 : 0);
+    fetchArtists(langKey, "");
+  }, [selectedLanguages]); // intentionally excludes fetchArtists/searchTerm
+
+  // ── Effect 2: Search term → 1200ms debounce, min 2 chars ─────────────────
+  useEffect(() => {
+    if (!searchTerm) return; // language effect handles empty-term case
+
+    const langKey = (selectedLanguages[0]?.name || "english").toLowerCase();
+
+    // Too short — clear results and stop
+    if (searchTerm.trim().length < 2) {
+      setIsTyping(false);
+      setArtists([]);
+      return;
+    }
+
+    // Check cache immediately — no delay if we already have the result
+    const cacheKey = `melopra_ob_artists__${langKey}__${searchTerm.trim()}`;
+    const cached = readCache(cacheKey);
+    if (cached) {
+      setIsTyping(false);
+      setArtists(cached);
+      return;
+    }
+
+    // Debounce: wait 1200ms after last keystroke before firing API
+    const timer = setTimeout(() => {
+      setIsTyping(false);
+      fetchArtists(langKey, searchTerm);
+    }, 1200);
+
     return () => clearTimeout(timer);
-  }, [searchTerm, selectedLanguages, fetchArtists]);
+  }, [searchTerm]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchTerm(val);
+    // Show typing indicator only when there's enough text to warrant a search
+    if (val.trim().length >= 2) setIsTyping(true);
+    else setIsTyping(false);
+  };
+
   const toggleLanguage = (lang) => {
     setSelectedLanguages([lang]);
     setSearchTerm("");
+    setIsTyping(false);
     setCurrentRegion(lang.region || "US");
   };
 
@@ -222,19 +263,71 @@ const OnboardingPage = ({ user, onComplete }) => {
             )}
           </h2>
 
-          {/* Search box */}
-          <input
-            type="text"
-            placeholder="Search artists..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="px-4 py-2 w-80 rounded-full bg-gray-800 text-white mb-6 outline-none focus:ring-2 focus:ring-purple-600"
-          />
+          {/* ── Professional Search Box ── */}
+          <div className="relative w-80 mx-auto mb-6">
+            {/* Search icon */}
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none select-none">
+              🔍
+            </span>
+
+            <input
+              type="text"
+              placeholder="Search artists... (min 2 chars)"
+              value={searchTerm}
+              onChange={handleSearchChange}
+              className="w-full pl-10 pr-10 py-2.5 rounded-full bg-gray-800 text-white outline-none focus:ring-2 focus:ring-purple-600 transition-all placeholder-gray-500"
+            />
+
+            {/* Right side: clear ✕ OR animated typing dots */}
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {isTyping ? (
+                /* 3-dot typing animation */
+                <span className="flex gap-1 items-center" title="Waiting for you to finish typing…">
+                  {[0, 150, 300].map((delay) => (
+                    <span
+                      key={delay}
+                      style={{
+                        display: "inline-block",
+                        width: 5,
+                        height: 5,
+                        borderRadius: "50%",
+                        background: "#a855f7",
+                        animation: `typingBounce 0.9s ${delay}ms ease-in-out infinite`,
+                      }}
+                    />
+                  ))}
+                  <style>{`
+                    @keyframes typingBounce {
+                      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+                      40%           { transform: translateY(-5px); opacity: 1; }
+                    }
+                  `}</style>
+                </span>
+              ) : searchTerm ? (
+                <button
+                  onClick={() => { setSearchTerm(""); setIsTyping(false); setArtists([]); }}
+                  className="text-gray-400 hover:text-white transition-colors text-lg leading-none"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              ) : null}
+            </span>
+          </div>
+
+          {/* Hint under the box */}
+          {searchTerm.length > 0 && searchTerm.trim().length < 2 && (
+            <p className="text-xs text-gray-500 mb-4">Type at least 2 characters to search…</p>
+          )}
+          {isTyping && (
+            <p className="text-xs text-purple-400 mb-4 animate-pulse">Searching in 1.2 s…</p>
+          )}
 
           {/* Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {loading ? (
+            {(loading || isTyping) ? (
               Array.from({ length: 10 }).map((_, i) => <ArtistSkeleton key={i} />)
+
             ) : artists.length > 0 ? (
               artists.map((artist) => (
                 <div
