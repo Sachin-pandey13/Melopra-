@@ -383,6 +383,57 @@ app.get("/api/artist-search", async (req, res) => {
 });
 
 /* -----------------------------------------------------------
+ 🔀 /api/deezer-artist — backward-compat alias for /api/artist-search
+    Old onboarding code called this; now redirected to JioSaavn.
+    Supports ?artist= (search) and ?lang= (popular by language).
+----------------------------------------------------------- */
+const LANG_POPULAR_ARTISTS = {
+  english: ["Taylor Swift", "Ed Sheeran", "The Weeknd", "Drake", "Billie Eilish"],
+  hindi:   ["Arijit Singh", "Jubin Nautiyal", "Shreya Ghoshal", "Neha Kakkar", "Badshah"],
+  punjabi: ["Karan Aujla", "Diljit Dosanjh", "AP Dhillon", "Shubh", "Ammy Virk"],
+  tamil:   ["Anirudh Ravichander", "AR Rahman", "Sid Sriram", "D Imman"],
+  telugu:  ["Devi Sri Prasad", "SS Thaman", "Sid Sriram"],
+  korean:  ["BTS", "Blackpink", "EXO", "Twice", "Stray Kids"],
+  spanish: ["Bad Bunny", "J Balvin", "Ozuna", "Maluma", "Karol G"],
+  french:  ["Stromae", "Aya Nakamura", "Angele"],
+  japanese:["YOASOBI", "Kenshi Yonezu", "ONE OK ROCK"],
+  arabic:  ["Amr Diab", "Nancy Ajram", "Elissa"],
+};
+
+app.get("/api/deezer-artist", async (req, res) => {
+  const artistQuery = req.query.artist;
+  const lang        = (req.query.lang || "english").toLowerCase();
+
+  // Build JioSaavn query
+  const query = artistQuery?.trim() || (LANG_POPULAR_ARTISTS[lang]?.[0] ?? "popular music");
+
+  const key    = cacheKey("saavn", query);
+  const cached = saavnCache.get(key);
+  if (cached) return res.json({ artists: cached });
+
+  try {
+    const response = await axios.get(
+      `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web6dot0`,
+      { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+
+    const items   = response.data?.artists?.data || [];
+    const artists = items.map((a) => ({
+      id:    `saavn-${a.id}`,
+      name:  a.title,
+      image: (a.image || "").replace("50x50", "150x150"),
+      fans:  0,
+    }));
+
+    saavnCache.set(key, artists, TTL.SAAVN);
+    return res.json({ artists });
+  } catch (err) {
+    console.error("deezer-artist alias error:", err.message);
+    return res.json({ artists: [] });
+  }
+});
+
+/* -----------------------------------------------------------
  🎥 Zero-Quota YouTube Proxy via play-dl
 ----------------------------------------------------------- */
 app.get("/api/yt-search", async (req, res) => {
