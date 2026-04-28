@@ -348,9 +348,27 @@ app.get("/api/play-song", async (req, res) => {
     Replaces Deezer Data (blocked) and YouTube Data (limited quota).
     Returns fast, global, and highly accurate artist objects.
 ----------------------------------------------------------- */
+// ── Shared helper: resolve JioSaavn image (handles string OR array format) ───
+function resolveJioSaavnImage(image) {
+  if (!image) return "";
+  // Newer API: image is an array [{quality, link}]
+  if (Array.isArray(image)) {
+    const best =
+      image.find(i => i.quality === "500x500") ||
+      image.find(i => i.quality === "150x150") ||
+      image.find(i => i.quality === "50x50")   ||
+      image[image.length - 1];
+    return best?.link || best?.url || "";
+  }
+  // Older API: plain string with size token
+  return String(image)
+    .replace("50x50",  "500x500")
+    .replace("150x150","500x500");
+}
+
 // ── Shared helper: query JioSaavn artist search endpoint ────────────────────
-async function saavnArtistSearch(query, signal) {
-  // Primary: dedicated artist search (returns proper images)
+async function saavnArtistSearch(query) {
+  // Primary: dedicated artist search endpoint (best images)
   try {
     const r1 = await axios.get(
       `https://www.jiosaavn.com/api.php?__call=search.getArtistResults&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web6dot0`,
@@ -358,26 +376,31 @@ async function saavnArtistSearch(query, signal) {
     );
     const items = r1.data?.results || [];
     if (items.length > 0) {
-      return items.slice(0, 8).map(a => ({
+      const mapped = items.slice(0, 8).map(a => ({
         id:    `saavn-${a.id}`,
         name:  a.title,
-        image: (a.image || "").replace("50x50", "500x500").replace("150x150", "500x500"),
+        image: resolveJioSaavnImage(a.image),
         fans:  0,
-      })).filter(a => a.name);
+      })).filter(a => a.name && a.image); // only include artists that have an image
+      if (mapped.length > 0) return mapped;
     }
   } catch (_) {}
 
-  // Fallback: autocomplete (may have sparser artist data)
-  const r2 = await axios.get(
-    `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web6dot0`,
-    { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
-  );
-  return (r2.data?.artists?.data || []).map(a => ({
-    id:    `saavn-${a.id}`,
-    name:  a.title,
-    image: (a.image || "").replace("50x50", "500x500").replace("150x150", "500x500"),
-    fans:  0,
-  })).filter(a => a.name);
+  // Fallback: autocomplete endpoint
+  try {
+    const r2 = await axios.get(
+      `https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=${encodeURIComponent(query)}&_format=json&_marker=0&ctx=web6dot0`,
+      { timeout: 5000, headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    return (r2.data?.artists?.data || []).map(a => ({
+      id:    `saavn-${a.id}`,
+      name:  a.title,
+      image: resolveJioSaavnImage(a.image),
+      fans:  0,
+    })).filter(a => a.name);
+  } catch (_) {}
+
+  return [];
 }
 
 app.get("/api/artist-search", async (req, res) => {

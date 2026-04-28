@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 import BottomNav from "./BottomNav";
 import CustomAudioPlayer from "./components/CustomAudioPlayer";
@@ -18,8 +18,39 @@ import { useAuth } from "../contexts/AuthContext";
 
 export default function MobileHome({ allItems = [], actions, library }) {
   const [activeTab, setActiveTab] = useState("home");
+  const prevTabRef = useRef("home"); // track previous tab for back navigation
   const { isExpanded } = useNowPlaying();
   const { currentUser } = useAuth();
+
+  // ── Android / Browser back-button handler ─────────────────────────────────
+  // On mount: push an initial history state so the first back press is caught.
+  // On every tab switch: push a new history entry.
+  // On popstate (back press): go to previous tab instead of exiting the app.
+  useEffect(() => {
+    // Initial entry so the very first back press is handled
+    window.history.pushState({ tab: "home" }, "", window.location.href);
+
+    const handlePop = () => {
+      // Put the state back so future back presses still work
+      window.history.pushState({ tab: prevTabRef.current }, "", window.location.href);
+      // Navigate to previous tab
+      setActiveTab(prev => {
+        const fallback = prevTabRef.current === prev ? "home" : prevTabRef.current;
+        prevTabRef.current = "home";
+        return fallback;
+      });
+    };
+
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
+
+  // Track tab history and push a browser history entry on every tab change
+  const handleTabChange = useCallback((newTab) => {
+    prevTabRef.current = activeTab; // remember where we came from
+    window.history.pushState({ tab: newTab }, "", window.location.href);
+    setActiveTab(newTab);
+  }, [activeTab]);
 
   // Login-wall state
   const [showLoginWall, setShowLoginWall] = useState(false);
@@ -103,7 +134,7 @@ export default function MobileHome({ allItems = [], actions, library }) {
       {!isExpanded && (
         <BottomNav
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={handleTabChange}
         />
       )}
 
